@@ -1,0 +1,29 @@
+--- a/packages/ti/sdo/dmai/linux/dm6446/Resize.c	2011-11-28 10:42:25.000000000 -0500
++++ b/packages/ti/sdo/dmai/linux/dm6446/Resize.c	2011-11-28 11:39:04.000000000 -0500
+@@ -44,7 +44,7 @@
+ 
+ /* If LSP supports resize then define CONFIG_RESIZER macro */
+ #ifdef CONFIG_RESIZER
+-#include <linux/davinci_resizer.h>
++#include <media/davinci/davinci_resizer.h>
+ #endif
+ 
+ /*
+@@ -470,7 +470,7 @@
+ #ifdef CONFIG_RESIZER
+     BufferGfx_Dimensions    srcDim;
+     BufferGfx_Dimensions    dstDim;
+-    struct rsz_params       params;
++    struct rsz_params_t       params;
+     Int                     hrsz, vrsz;
+     Int                     width, height;
+ 
+@@ -580,7 +580,7 @@
+                    Buffer_Handle hSrcBuf, Buffer_Handle hDstBuf)
+ {
+ #ifdef CONFIG_RESIZER
+-    struct rsz_resize   rsz;
++    struct rsz_resize_t   rsz;
+     Int                 err;
+     UInt32              srcOffset, dstOffset;
+ 

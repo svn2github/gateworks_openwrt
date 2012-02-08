@@ -1,0 +1,136 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2006 OpenWrt.org
+START=45
+
+GSTREAMER_BIN="/usr/bin/gst-launch-0.10"
+
+load_modules() {
+	grep cmemk /proc/modules >/dev/null || {
+		insmod cmemk phys_start=0x87600000 phys_end=0x88000000 \
+			pools=1x5250000,2x829440,4x691200,1x8192,1x1
+		insmod dsplinkk
+	}
+}
+
+load_video() {
+	#export GST_PLUGIN_PATH=/usr/lib/gstreamer-0.10
+	export GST_REGISTRY=/tmp/gst_registry.bin
+	GSTREAMER_ARGS=""
+	A_ARGS=""
+	append A_ARGS "a=rtpmap:96"
+	
+	
+	local type
+	local host
+	local port
+	local fps
+	local bps
+	local codec
+	local jitter
+	local width
+	local height
+	local ratecontrol
+	local quality
+	
+	config_get type $1 type
+	config_get host $1 host
+	config_get port $1 port
+	config_get fps $1 fps "none"
+	config_get bps $1 bps "none"
+	config_get codec $1 codec
+	config_get jitter $1 jitter "0"
+	config_get width $1 width "720"
+	config_get height $1 height "480"
+	config_get ratecontrol $1 ratecontrol "2"
+	config_get quality $1 quality "3"
+	
+	echo "setting type ${type}"
+	echo "setting host ${host}"
+	echo "setting port ${port}"
+	echo "setting fps ${fps}"
+	echo "setting bps ${bps}"
+	echo "setting codec ${codec}"
+	
+	[ "$type" == "server" ] && {
+		[ "$fps" == "30" ] && {
+			append GSTREAMER_ARGS "v4l2src always-copy=0 queue-size=1 !"	
+		} || {
+			append GSTREAMER_ARGS "v4l2src always-copy=1 queue-size=1 !"
+			append GSTREAMER_ARGS "videorate ! video/x-raw-yuv,framerate=$fps/1 !"
+		} 
+		append GSTREAMER_ARGS "TIVidResize ! video/x-raw-yuv,width=$width,height=$height !"
+		append GSTREAMER_ARGS "TIVidenc1 engineName=encode encodingPreset=$quality rateControlPreset=$ratecontrol bitRate=$bps frameRate=$fps"
+		[ "$fps" == "30" ] && {
+			append GSTREAMER_ARGS "contiguousInputFrame=1"
+		}
+		[ "$codec" == "h264" ] && {
+			append A_ARGS "H264/90000"
+			append GSTREAMER_ARGS "codecName=h264enc ! rtph264pay pt=96"
+		} || {
+			append A_ARGS "MPEG4/90000"
+			append GSTREAMER_ARGS "codecName=mpeg4enc ! rtpmp4vpay pt=96"
+		}
+		append GSTREAMER_ARGS "! udpsink host=$host port=$port"
+	} || {
+		append GSTREAMER_ARGS "udpsrc multicast-group=$host multicast-iface=br-lan port=$port caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, profile-level-id=(string)42801e, payload=(int)96,"
+		[ "$codec" == "h264" ] && {
+			append GSTREAMER_ARGS "encoding-name=(string)H264\" !" 
+		} || {
+			append GSTREAMER_ARGS "encoding-name=(string)MPEG4\" !"
+		}
+		[ "$jitter" == "0" ] || {
+			append GSTREAMER_ARGS "gstrtpjitterbuffer latency=$jitter !"
+		}
+		[ "$codec" == "h264" ] && {
+			append GSTREAMER_ARGS "rtph264depay !"
+		} || {
+			append GSTREAMER_ARGS "rtpmp4vdepay !"
+		} 
+		append GSTREAMER_ARGS "TIViddec2 engineName=decode"
+		[ "$codec" == "h264" ] && {
+			append GSTREAMER_ARGS "codecName=h264dec !"
+		} || {
+			append GSTREAMER_ARGS "codecName=mpeg4dec !"
+		}
+#		append GSTREAMER_ARGS "TIVidResize ! video/x-raw-yuv,width=720,height=480 !"
+		append GSTREAMER_ARGS "TIDmaiVideoSink videoStd=D1_NTSC videoOutput=composite sync=0 accelFrameCopy=1"
+	}
+	
+	echo "gstreamer args = $GSTREAMER_ARGS"
+	cd /etc/ti
+	start-stop-daemon -S -x $GSTREAMER_BIN \
+		-p /var/run/video.pid \
+		-m -b -- $GSTREAMER_ARGS
+	
+	rm -f /www/video.sdp
+	echo "v=0" > /www/video.sdp
+	echo "o=- 1188340656180883 1 IN IP4 $host/255" >> /www/video.sdp
+	echo "s=Session streamed by GStreamer" >> /www/video.sdp
+	echo "i=server.sh" >> /www/video.sdp
+	echo "t=0 0" >> /www/video.sdp
+	echo "a=tool:GStreamer" >> /www/video.sdp
+	echo "a=type:broadcast" >> /www/video.sdp
+	echo "m=video $port RTP/AVP 96" >> /www/video.sdp
+	echo "c=IN IP4 $host/255" >> /www/video.sdp
+	echo "$A_ARGS" >> /www/video.sdp	
+}
+
+start() {
+	[ -f /etc/ti/index.htm ] && {
+		mv /etc/ti/index.htm /usr/lib/lua/luci/view/admin_index
+	}
+	load_modules
+
+	config_load tivideo
+	config_foreach load_video video
+}
+
+stop() {
+	[ -f /var/run/video.pid ] && {
+		start-stop-daemon -K -q \
+			-p /var/run/video.pid -s INT
+		
+		rm -f /var/run/video.pid
+	}
+	sleep 3
+}

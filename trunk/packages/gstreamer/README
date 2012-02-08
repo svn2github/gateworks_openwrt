@@ -1,0 +1,19 @@
+These packages are still a work-in-progress and intended for the
+Gateworks GW2361 Rincon product family.  The intention is to replace the
+monolithic and dated ti-tools package at
+http://svn.gateworks.com/bsp/rincon/trunk/packages/ti-tools with a set of
+packages that better integrate with upgstream gstreamer packages as well
+as to make it clear where the sources come from and what patches are applied.
+
+Some of these packages override those in upstream OpenWRT which will
+eventually be submitted upstream.
+
+To use these make sure you add a feed for them in feeds.conf/feeds.conf.default
+the preceeds svn://svn.openwrt.org/openwrt/packages
+
+Todo:
+ - investigate moving SDKPATHS to a common include file
+ - fix missing repating pre-amble from h264 stream
+ - Split out cetools from ti-ce package
+ - reconcile differences from what is bundled in ti-tools
+ - evaluate updates of various components
