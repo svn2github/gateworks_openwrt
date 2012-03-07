@@ -1,22 +1,37 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gstreamer-ti
+ifdef 0
 PKG_VERSION:=1.02.00
 
 PKG_SOURCE:=gst-ti-plugin-minimal-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://gstreamer.ti.com/gf/download/frsrelease/437/4107
 PKG_MD5SUM:=340baec772847689dfd1f3c37f0650f1
+PKG_BUILD_DIR:=$(BUILD_DIR)/gst-ti-plugin-minimal-$(PKG_VERSION)
+else
+#PKG_REV:=962
+PKG_REV:=611
+PKG_VERSION:=r$(PKG_REV)
+PKG_RELEASE:=1
+
+PKG_SOURCE_PROTO:=svn
+PKG_SOURCE_VERSION:=$(PKG_REV)
+PKG_SOURCE_SUBDIR:=gstreamer-ti-svn-$(PKG_VERSION)
+PKG_SOURCE_URL:=--username=anonymous --password= https://gstreamer.ti.com/svn/gstreamer_ti/trunk/gstreamer_ti/ti_build/ticodecplugin/
+PKG_SOURCE:=$(PKG_SOURCE_SUBDIR).tar.bz2
+PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_SOURCE_SUBDIR)
+endif
+
+PATCH_DIR:=patches/$(PKG_VERSION)
 PKG_FIXUP:=libtool
 
-PKG_BUILD_DIR:=$(BUILD_DIR)/gst-ti-plugin-minimal-$(PKG_VERSION)
 
 include $(INCLUDE_DIR)/package.mk
 
 GST_VERSION:=0.10
 
 define Package/gstreamer-ti
-	SECTION:=local
-#	CATEGORY:=Multimedia
+	#CATEGORY:=Multimedia
 	CATEGORY:=Local
 	TITLE:=TI GStreamer plugin
 	URL:=http://gstreamer.ti.com/
@@ -47,6 +62,7 @@ DVSDK_PATHS = \
 	CODEC_INSTALL_DIR=$(BUILD_DIR)/ti-codecs/dm6446_dvsdk_combos_2_05 \
 	LINK_INSTALL_DIR=$(BUILD_DIR)/ti-dsplink \
 	LINUXKERNEL_INSTALL_DIR=$(LINUX_DIR) \
+	XDAIS_INSTALL_DIR=$(BUILD_DIR)/ti-ce/cetools \
 	XDC_INSTALL_DIR=$(BUILD_DIR)/ti-xdc \
 	MVTOOL_DIR=$(TOOLCHAIN_DIR)/bin \
 
@@ -73,9 +89,8 @@ endef
 
 define Package/gstreamer-ti/install
 	$(INSTALL_DIR) $(1)/usr/lib/gstreamer-$(GST_VERSION)
-	$(CP) \
-		$(PKG_INSTALL_DIR)/usr/lib/gstreamer-$(GST_VERSION)/libgstticodecplugin.so* \
-		$(1)/usr/lib/gstreamer-0.10/
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/lib/gstreamer-$(GST_VERSION)/libgstticodecplugin.so* \
+		$(1)/usr/lib/gstreamer-$(GST_VERSION)/
 endef
 
 $(eval $(call BuildPackage,gstreamer-ti))

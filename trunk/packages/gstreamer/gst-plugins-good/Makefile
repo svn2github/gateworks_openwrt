@@ -50,6 +50,7 @@ $(call Package/gstreamer/description/Default)
  the good plugins collection.
 endef
 
+GST_COND_SELECT = $(patsubst %,$(if $(CONFIG_PACKAGE_gst-mod-$(1)),--enable,--disable)-%,$(1))
 
 GST_VERSION:=0.10
 
@@ -78,7 +79,6 @@ CONFIGURE_ARGS += \
 	--disable-goom2k1 \
 	--disable-hal \
 	--disable-jpeg \
-	--disable-law \
 	--disable-libcaca \
 	--disable-libdv \
 	--disable-libpng \
@@ -107,6 +107,9 @@ CONFIGURE_ARGS += \
 	--without-libiconv-prefix \
 	--without-libintl-prefix \
 	--without-x \
+
+EXTRA_CFLAGS+= \
+	-DMVL_LSP \
 
 EXTRA_LDFLAGS+= \
 	-Wl,-rpath-link=$(STAGING_DIR)/usr/lib \
@@ -164,13 +167,14 @@ $(eval $(call GstBuildPlugin,multipart,multipart stream handling,,,))
 $(eval $(call GstBuildPlugin,ossaudio,OSS audio support,audio,,))
 $(eval $(call GstBuildPlugin,replaygain,volume normalization,pbutils,,))
 $(eval $(call GstBuildPlugin,rtp,RTP,audio rtp tag,,))
-$(eval $(call GstBuildPlugin,rtpmanager,RTP Manager,interfaces rtp rtsp sdp,,))
 $(eval $(call GstBuildPlugin,rtsp,RTSP,interfaces rtp rtsp sdp,,))
 $(eval $(call GstBuildPlugin,souphttpsrc,soup input,audio,,+libsoup))
 $(eval $(call GstBuildPlugin,spectrum,spectrum data output,audio fft,,))
 $(eval $(call GstBuildPlugin,udp,UDP,netbuffer,,))
 $(eval $(call GstBuildPlugin,wavenc,Wav encoder,,,))
 $(eval $(call GstBuildPlugin,wavparse,Wav parser,audio riff tag,,))
-$(eval $(call GstBuildPlugin,video4linux2,Video4Linux,video,,))
+$(eval $(call GstBuildPlugin,video4linux2,Elements for Video4Linux2 sources,video,,))
+$(eval $(call GstBuildPlugin,alaw,Alaw audio coding,audio,,))
+$(eval $(call GstBuildPlugin,mulaw,Mulaw audio coding,audio,,))
 
 $(eval $(call BuildPackage,gst-plugins-good))

@@ -8,7 +8,7 @@ PKG_RELEASE:=1
 PKG_SOURCE_PROTO:=svn
 PKG_SOURCE_VERSION:=$(PKG_REV)
 PKG_SOURCE_SUBDIR:=ti-dmai-$(PKG_VERSION)
-PKG_SOURCE_URL:=https://gforge.ti.com/svn/dmai/trunk/davinci_multimedia_application_interface/dmai
+PKG_SOURCE_URL:=--username=anonymous --password= https://gforge.ti.com/svn/dmai/trunk/davinci_multimedia_application_interface/dmai
 PKG_SOURCE:=$(PKG_SOURCE_SUBDIR).tar.bz2
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_SOURCE_SUBDIR)

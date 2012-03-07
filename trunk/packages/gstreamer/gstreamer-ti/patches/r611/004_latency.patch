@@ -1,0 +1,145 @@
+Index: gstreamer-ti-svn-r611/src/gstticircbuffer.c
+===================================================================
+--- gstreamer-ti-svn-r611.orig/src/gstticircbuffer.c	2012-03-06 22:02:37.685842232 -0800
++++ gstreamer-ti-svn-r611/src/gstticircbuffer.c	2010-05-18 23:23:08.000000000 -0700
+@@ -175,6 +175,7 @@
+     circBuf->fixedBlockSize  = FALSE;
+     circBuf->consumerAborted = FALSE;
+     circBuf->userCopy       = NULL;
++		circBuf->packetSend			= NULL;
+ 
+     GST_LOG("end init");
+ }
+@@ -403,6 +404,10 @@
+         gst_ticircbuffer_broadcast_producer(circBuf);
+     }
+ 
++		if (gst_ticircbuffer_data_size(circBuf) >= 200 && circBuf->packetSend)
++		{
++			gst_ticircbuffer_broadcast_producer(circBuf);
++		}	
+     goto exit;
+ 
+ exit_fail:
+@@ -512,17 +517,31 @@
+     gst_ticircbuffer_reset_read_pointer(circBuf);
+ 
+     /* Don't return any data util we have a full window available */
++    if (circBuf->packetSend)
++    {
++			while (gst_ticircbuffer_data_size(circBuf) < 200)
++			{
++        GST_LOG("blocking output until a full window is available\n");
++        gst_ticircbuffer_wait_on_producer(circBuf);
++        GST_LOG("unblocking output\n");
++        gst_ticircbuffer_reset_read_pointer(circBuf);
++        /* Reset our mutex condition so calling wait_on_consumer will block */
++        Rendezvous_reset(circBuf->waitOnProducer);				
++			}
++    
++    }
++    else
++    {
+     while (!circBuf->drain && !gst_ticircbuffer_window_available(circBuf)) {
+ 
+         GST_LOG("blocking output until a full window is available\n");
+         gst_ticircbuffer_wait_on_producer(circBuf);
+         GST_LOG("unblocking output\n");
+         gst_ticircbuffer_reset_read_pointer(circBuf);
+-
+         /* Reset our mutex condition so calling wait_on_consumer will block */
+         Rendezvous_reset(circBuf->waitOnProducer);
+     }
+-
++		}
+     /* Set the size of the buffer to be no larger than the window size.  Some
+      * audio codecs have an issue when you pass a buffer larger than 64K.
+      * We need to pass it smaller buffer sizes though, as the EOS is detected
+@@ -651,6 +670,14 @@
+     }
+ }
+ 
++void gst_ticircbuffer_packet_send(GstTICircBuffer *circBuf, gboolean status)
++{
++	if (circBuf == NULL)
++		return;
++		
++	circBuf->packetSend = status;
++}
++
+ /******************************************************************************
+  * gst_ticircbuffer_shift_data
+  *    Look for uncopied data in the last window and move it to the first one.
+Index: gstreamer-ti-svn-r611/src/gstticircbuffer.h
+===================================================================
+--- gstreamer-ti-svn-r611.orig/src/gstticircbuffer.h	2012-03-06 22:02:37.693842272 -0800
++++ gstreamer-ti-svn-r611/src/gstticircbuffer.h	2010-05-18 22:53:38.000000000 -0700
+@@ -71,6 +71,7 @@
+     /* Input Thresholds */
+     Int32              windowSize;
+     gboolean           drain;
++		gboolean					 packetSend;
+     Int32              bytesNeeded;
+ 
+     /* Blocking Conditions to Throttle I/O */
+@@ -99,6 +100,8 @@
+ GstBuffer*       gst_ticircbuffer_get_data(GstTICircBuffer *circBuf);
+ void             gst_ticircbuffer_drain(GstTICircBuffer *circBuf,
+                      gboolean status);
++void             gst_ticircbuffer_packet_send(GstTICircBuffer *circBuf,
++                     gboolean status);
+ void             gst_ticircbuffer_set_display(GstTICircBuffer *circBuf,
+                      gboolean disp);
+ void             gst_ticircbuffer_consumer_aborted(GstTICircBuffer *circBuf);
+Index: gstreamer-ti-svn-r611/src/gsttividdec.c
+===================================================================
+--- gstreamer-ti-svn-r611.orig/src/gsttividdec.c	2012-03-06 22:05:32.110707168 -0800
++++ gstreamer-ti-svn-r611/src/gsttividdec.c	2012-03-06 22:05:51.000000000 -0800
+@@ -1168,6 +1168,8 @@
+     viddec->circBuf =
+         gst_ticircbuffer_new(Vdec_getInBufSize(viddec->hVd), 3, FALSE);
+ 
++		gst_ticircbuffer_packet_send(viddec->circBuf, TRUE);
++
+     if (viddec->circBuf == NULL) {
+         GST_ELEMENT_ERROR(viddec, RESOURCE, NO_SPACE_LEFT,
+         ("failed to create circular input buffer\n"), (NULL));
+Index: gstreamer-ti-svn-r611/src/gsttividdec2.c
+===================================================================
+--- gstreamer-ti-svn-r611.orig/src/gsttividdec2.c	2012-03-06 22:05:36.470728776 -0800
++++ gstreamer-ti-svn-r611/src/gsttividdec2.c	2012-03-06 22:06:35.000000000 -0800
+@@ -1130,6 +1130,12 @@
+             if (!gst_tividdec2_exit_video(viddec2)) {
+                 return GST_STATE_CHANGE_FAILURE;
+             }
++            
++  				  /* stop codec engine */
++				    if (gst_tividdec2_codec_stop(viddec2) < 0) {
++  			      GST_ERROR("failed to stop codec\n");
++  				  }
++	
+             break;
+ 
+         case GST_STATE_CHANGE_READY_TO_PAUSED:
+@@ -1270,6 +1276,8 @@
+     viddec2->circBuf =
+         gst_ticircbuffer_new(Vdec2_getInBufSize(viddec2->hVd), 3, FALSE);
+ 
++		gst_ticircbuffer_packet_send(viddec2->circBuf, TRUE);
++
+     if (viddec2->circBuf == NULL) {
+         GST_ELEMENT_ERROR(viddec2, RESOURCE, NO_SPACE_LEFT,
+         ("failed to create circular input buffer\n"), (NULL));
+@@ -1587,10 +1595,12 @@
+      */
+     Rendezvous_force(viddec2->waitOnDecodeDrain);
+ 
++#if 0
+     /* stop codec engine */
+     if (gst_tividdec2_codec_stop(viddec2) < 0) {
+         GST_ERROR("failed to stop codec\n");
+     }
++#endif
+ 
+     gst_object_unref(viddec2);
+ 

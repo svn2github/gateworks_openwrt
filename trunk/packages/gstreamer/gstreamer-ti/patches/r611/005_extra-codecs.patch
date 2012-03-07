@@ -1,0 +1,31 @@
+Index: gstreamer-ti-svn-r611/src/gstticodecs_dm6446.c
+===================================================================
+--- gstreamer-ti-svn-r611.orig/src/gstticodecs_dm6446.c	2012-03-06 22:08:34.467611417 -0800
++++ gstreamer-ti-svn-r611/src/gstticodecs_dm6446.c	2012-03-06 22:08:47.000000000 -0800
+@@ -34,6 +34,11 @@
+         "g711dec",               /* String name of codec used by CE          */
+         decodeEngine             /* Engine that contains this codec          */
+     },
++    {
++        "G.711 Speech Encoder",  /* String name of codec used by plugin      */
++        "g711enc",               /* String name of codec used by CE          */
++        encodeEngine             /* Engine that contains this codec          */
++    },
+ 
+     /* Audio Codecs */
+     {
+@@ -71,6 +76,14 @@
+         "H.264 Video Encoder",  /* String name of codec used by plugin       */
+         "h264enc",              /* String name of codec used by CE           */
+         encodeEngine            /* Engine that contains this codec           */
++    }, {
++        "JPEG Image Encoder",  /* String name of codec used by plugin       */
++        "jpegenc",             /* String name of codec used by CE           */
++        encodeEngine            /* Engine that contains this codec           */
++    }, {
++        "JPEG Image Decoder",  /* String name of codec used by plugin       */
++        "jpegdec",             /* String name of codec used by CE           */
++        decodeEngine            /* Engine that contains this codec           */
+     },
+ 
+     { NULL }
