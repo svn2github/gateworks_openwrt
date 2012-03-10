@@ -116,9 +116,6 @@ load_video() {
 }
 
 start() {
-	[ -f /etc/ti/index.htm ] && {
-		mv /etc/ti/index.htm /usr/lib/lua/luci/view/admin_index
-	}
 	load_modules
 
 	config_load tivideo
