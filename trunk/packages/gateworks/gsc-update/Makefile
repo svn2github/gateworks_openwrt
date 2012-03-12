@@ -16,7 +16,7 @@ define Package/gsc-update/description
 	Gateworks System Controller Firmware Update Application
 endef
 
-TARGET_CFLAGS += -DTARGET=${CONFIG_TARGET_BOARD}
+TARGET_CFLAGS += -D${CONFIG_TARGET_BOARD}
 
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)

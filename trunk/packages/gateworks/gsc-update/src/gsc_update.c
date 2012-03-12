@@ -57,7 +57,7 @@ int main(int argc, char **argv)
 	char *prog_filename = NULL;
 	unsigned char buffer[16];
 	signed char ret;
-#if TARGET == davinci
+#if defined (davinci)
 	unsigned char i2cbus = 1;
 #else
 	unsigned char i2cbus = 0;
