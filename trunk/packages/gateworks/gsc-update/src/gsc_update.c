@@ -122,12 +122,12 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	i2c_smbus_write_byte_data(file, 0, GSC_PASSWORD | GSC_UNLOCK);
-	ret = i2c_smbus_read_byte_data(file, 0);
-
 	if (parse_data_file(prog_filename, data, address, length)) {
 		exit(2);
 	}
+
+	i2c_smbus_write_byte_data(file, 0, GSC_PASSWORD | GSC_UNLOCK);
+	ret = i2c_smbus_read_byte_data(file, 0);
 
 	/* ##### Stage 1 Upgrader ##### */
 	// Erase all of main flash
@@ -247,6 +247,8 @@ int parse_data_file(char *filename, unsigned char data[16][16384], short address
 	memset(length, 0, 16*2);
 
 	fd = fopen(filename, "r");
+	if (!fd)
+		return -1;
 	while (fgets(line, 1024, fd)) {
 		linenum++;
 		if (linenum == 1 && line[0] != '@') {
