@@ -32,6 +32,7 @@
 #define GSC2_PROG			0x5
 
 int parse_data_file(char *filename, unsigned char data[16][16384], short address[16], short length[16]);
+int calc_crc(unsigned char data[16][16384], short address[16], short length[16]);
 
 void print_banner(void)
 {
@@ -62,6 +63,8 @@ int main(int argc, char **argv)
 #else
 	unsigned char i2cbus = 0;
 #endif
+	unsigned char calc_crc_only = 0;
+	unsigned short crc;
 	char device[16];
 
 	int i, j, k;
@@ -81,6 +84,18 @@ int main(int argc, char **argv)
 					print_help();
 				}
 				break;
+			case 'c':
+				if ((i+1 < argc) && (argv[i+1][0] != '-'))
+				{
+					i++;
+					prog_filename = argv[i];
+					calc_crc_only = 1;
+				}
+				else
+				{
+					print_help();
+				}
+				break;
 			}
 		}
 	}
@@ -91,6 +106,18 @@ int main(int argc, char **argv)
 	}
 
 	print_banner();
+
+	/* parse and validate file */
+	if (parse_data_file(prog_filename, data, address, length)) {
+		exit(2);
+	}
+
+	/* calculate CRC over parsed file */
+	crc = calc_crc(data, address, length);
+	printf("%s: crc=0x%04x\n", prog_filename, crc);
+	if (calc_crc_only) {
+		return 1;
+	}
 
 	sprintf(device, "/dev/i2c-%d", i2cbus);
 	file = open(device, O_RDWR);
@@ -114,18 +141,19 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
+	/* read/show current firmware CRC and version */
+	ret = i2c_smbus_read_byte_data(file, 12);
+	crc = ret;
+	ret = i2c_smbus_read_byte_data(file, 13);
+	crc |= ret << 8;
 	ret = i2c_smbus_read_byte_data(file, 14);
-	printf("Current GSC Firmware Rev: %i\n", ret & 0xff);
+	printf("Current GSC Firmware Rev: %i (crc=0x%04x)\n", ret & 0xff, crc);
 
+	/* set slave device to GSC update addr and unlock the GSC for programming */
 	if (ioctl(file, I2C_SLAVE, GSC_UPDATER) < 0) {
 		perror("couldn't set GSC_UPDATER address");
 		exit(1);
 	}
-
-	if (parse_data_file(prog_filename, data, address, length)) {
-		exit(2);
-	}
-
 	i2c_smbus_write_byte_data(file, 0, GSC_PASSWORD | GSC_UNLOCK);
 	ret = i2c_smbus_read_byte_data(file, 0);
 
@@ -202,6 +230,7 @@ int main(int argc, char **argv)
 		}
 	}
 
+	/* program new segments */
 	for (i = 15; i>= 0; i--) {
 		if (length[i]) {
 			for (j = 0; j < length[i]; j+=2) {
@@ -228,8 +257,58 @@ int main(int argc, char **argv)
 		}
 	}
 	i2c_smbus_write_byte(file, GSC2_PUC);
+	close(device);
 
-	return 0;
+	return 1;
+}
+
+#define ADDR_START 0xc000
+#define ADDR_END   0x10000
+int calc_crc(unsigned char data[16][16384], short address[16], short length[16])
+{
+	const unsigned short crc_16_table[16] = {
+	  0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
+ 	  0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400 
+	};
+	unsigned int addr = ADDR_START;
+	unsigned short crc = 0;
+	unsigned short r;
+	int i,j;
+
+	for (i = 0; i < 16; i++) {
+		if (length[i]) {
+			int segaddr = (unsigned short) address[i];
+
+			// loop over blank gap 
+			for (; addr < segaddr; addr++) {
+				if (addr >= ADDR_END)
+					continue;
+				// skipp EEPROM flash segments
+				if (addr >= 0xf800 && addr < 0xfe00)
+					continue;
+				r = crc_16_table[crc & 0xf];
+				crc = (crc >> 4) & 0x0fff;
+				crc = crc ^ r ^ crc_16_table[0xf];
+				r = crc_16_table[crc & 0xf];
+				crc = (crc >> 4) & 0x0fff;
+				crc = crc ^ r ^ crc_16_table[0xf];
+			}
+
+			// loop over segment data
+			for (j = 0; j < length[i]; j++, addr++) {
+				if (addr >= ADDR_END)
+					continue;
+				r = crc_16_table[crc & 0xf];
+				crc = (crc >> 4) & 0x0fff;
+				crc = crc ^ r ^ crc_16_table[data[i][j] & 0xf];			
+				r = crc_16_table[crc & 0xf];
+				crc = (crc >> 4) & 0x0fff;
+				crc = crc ^ r ^ crc_16_table[(data[i][j] >> 4) & 0xf];
+			}
+		}
+	}
+
+	return crc;
 }
 
 int parse_data_file(char *filename, unsigned char data[16][16384], short address[16], short length[16])
@@ -248,8 +327,8 @@ int parse_data_file(char *filename, unsigned char data[16][16384], short address
 
 	fd = fopen(filename, "r");
 	if (!fd)
-		return -1;
-	while (fgets(line, 1024, fd)) {
+		return 0;
+	while (fgets(line, 1025, fd)) {
 		linenum++;
 		if (linenum == 1 && line[0] != '@') {
 			fprintf(stderr, "Invalid GSC firmware file\n");
