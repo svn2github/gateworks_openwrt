@@ -327,8 +327,8 @@ int parse_data_file(char *filename, unsigned char data[16][16384], short address
 
 	fd = fopen(filename, "r");
 	if (!fd)
-		return 0;
-	while (fgets(line, 1025, fd)) {
+		return -1;
+	while (fgets(line, 1024, fd)) {
 		linenum++;
 		if (linenum == 1 && line[0] != '@') {
 			fprintf(stderr, "Invalid GSC firmware file\n");
