@@ -1,8 +1,6 @@
-Index: gstreamer-ti-svn-r611/src/gsttiquicktime_h264.c
-===================================================================
---- gstreamer-ti-svn-r611.orig/src/gsttiquicktime_h264.c	2012-03-06 21:55:27.951711291 -0800
-+++ gstreamer-ti-svn-r611/src/gsttiquicktime_h264.c	2012-03-06 21:55:50.000000000 -0800
-@@ -509,6 +509,30 @@
+--- a/src/gsttiquicktime_h264.c
++++ b/src/gsttiquicktime_h264.c
+@@ -509,6 +509,30 @@ static gboolean gst_h264_create_sps_pps
  }
  
  /******************************************************************************
@@ -33,11 +31,9 @@ Index: gstreamer-ti-svn-r611/src/gsttiquicktime_h264.c
   * gst_h264_create_codec_data
   *****************************************************************************/
  GstBuffer* gst_h264_create_codec_data (Buffer_Handle hBuf)
-Index: gstreamer-ti-svn-r611/src/gsttiquicktime_h264.h
-===================================================================
---- gstreamer-ti-svn-r611.orig/src/gsttiquicktime_h264.h	2012-03-06 21:55:27.971711392 -0800
-+++ gstreamer-ti-svn-r611/src/gsttiquicktime_h264.h	2012-03-06 21:55:43.000000000 -0800
-@@ -89,6 +89,9 @@
+--- a/src/gsttiquicktime_h264.h
++++ b/src/gsttiquicktime_h264.h
+@@ -89,6 +89,9 @@ gboolean gst_is_h264_encoder (const gcha
  /* Function to create codec_data (avcC atom) from h264 stream */
  GstBuffer* gst_h264_create_codec_data(Buffer_Handle hBuf);
  
@@ -47,11 +43,9 @@ Index: gstreamer-ti-svn-r611/src/gsttiquicktime_h264.h
  #endif /* __GST_TIQUICKTIME_H264_H__ */
  
  
-Index: gstreamer-ti-svn-r611/src/gsttividenc.c
-===================================================================
---- gstreamer-ti-svn-r611.orig/src/gsttividenc.c	2012-03-06 21:56:21.887978754 -0800
-+++ gstreamer-ti-svn-r611/src/gsttividenc.c	2012-03-06 21:57:05.000000000 -0800
-@@ -401,6 +401,7 @@
+--- a/src/gsttividenc.c
++++ b/src/gsttividenc.c
+@@ -401,6 +401,7 @@ static void gst_tividenc_init(GstTIViden
      videnc->encodingPreset          = 1;
      videnc->byteStream              = TRUE;
      videnc->codec_data              = NULL;
@@ -59,7 +53,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc.c
  }
  /******************************************************************************
   * gst_tividenc_find_colorSpace 
-@@ -1126,6 +1127,12 @@
+@@ -1126,6 +1127,12 @@ static gboolean gst_tividenc_exit_video(
          videnc->codec_data = NULL;
      }
  
@@ -72,7 +66,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc.c
      GST_LOG("end exit_video\n");
      return TRUE;
  }
-@@ -1363,6 +1370,12 @@
+@@ -1363,6 +1370,12 @@ void gst_tividenc_populate_codec_header
                  videnc->codec_data = gst_h264_create_codec_data(hDstBuf);
              }
          }
@@ -85,7 +79,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc.c
      }
  }
  
-@@ -1371,7 +1384,7 @@
+@@ -1371,7 +1384,7 @@ void gst_tividenc_populate_codec_header
   *  Function parses and push the output buffer .
   *****************************************************************************/
  GstFlowReturn  gst_tividenc_parse_and_push (GstTIVidenc *videnc, 
@@ -94,7 +88,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc.c
  {
      guint8 *data;
      guint   len;
-@@ -1391,6 +1404,13 @@
+@@ -1391,6 +1404,13 @@ GstFlowReturn  gst_tividenc_parse_and_pu
              data[1] = (len >> 16) & 0xff;
              data[0] = (len >> 24) & 0xff;
          }
@@ -108,7 +102,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc.c
      }
  
      return gst_pad_push(videnc->srcpad, outBuf);
-@@ -1414,6 +1434,7 @@
+@@ -1414,6 +1434,7 @@ static void* gst_tividenc_encode_thread(
      GstBuffer           *outBuf;
      Int                 bufIdx;
      Int                 ret;
@@ -116,7 +110,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc.c
  
      GST_LOG("starting  video encode thread\n");
  
-@@ -1499,6 +1520,7 @@
+@@ -1499,6 +1520,7 @@ static void* gst_tividenc_encode_thread(
          GST_LOG("invoking the video encoder\n");
          ret             = Venc_process(videnc->hVe, hInBuf, hDstBuf);
          encDataConsumed = Buffer_getNumBytesUsed(hEncDataWindow);
@@ -124,7 +118,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc.c
  
          if (ret < 0) {
              GST_ELEMENT_ERROR(videnc, STREAM, ENCODE,
-@@ -1566,7 +1588,8 @@
+@@ -1566,7 +1588,8 @@ static void* gst_tividenc_encode_thread(
          /* Parse and Push the transport buffer to the source pad */
          GST_LOG("pushing display buffer to source pad\n");
  
@@ -134,11 +128,9 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc.c
              GST_DEBUG("push to source pad failed\n");
              goto thread_failure;
          }
-Index: gstreamer-ti-svn-r611/src/gsttividenc.h
-===================================================================
---- gstreamer-ti-svn-r611.orig/src/gsttividenc.h	2012-03-06 21:56:21.895978787 -0800
-+++ gstreamer-ti-svn-r611/src/gsttividenc.h	2012-03-06 21:56:26.000000000 -0800
-@@ -108,7 +108,7 @@
+--- a/src/gsttividenc.h
++++ b/src/gsttividenc.h
+@@ -108,7 +108,7 @@ struct _GstTIVidenc
    GstTICircBuffer   *circBuf;
  
    /* H.264 header */
@@ -147,11 +139,9 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc.h
    gboolean   byteStream;
  };
  
-Index: gstreamer-ti-svn-r611/src/gsttividenc1.c
-===================================================================
---- gstreamer-ti-svn-r611.orig/src/gsttividenc1.c	2012-03-06 21:57:12.752230970 -0800
-+++ gstreamer-ti-svn-r611/src/gsttividenc1.c	2012-03-06 21:58:13.000000000 -0800
-@@ -447,6 +447,7 @@
+--- a/src/gsttividenc1.c
++++ b/src/gsttividenc1.c
+@@ -447,6 +447,7 @@ static void gst_tividenc1_init(GstTIVide
      videnc1->encodingPreset         = 1;
      videnc1->byteStream             = TRUE;
      videnc1->codec_data             = NULL;
@@ -159,7 +149,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc1.c
  }
  
  /******************************************************************************
-@@ -1358,6 +1359,12 @@
+@@ -1358,6 +1359,12 @@ static gboolean gst_tividenc1_exit_video
          videnc1->codec_data = NULL;
      }
  
@@ -172,7 +162,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc1.c
      GST_LOG("end exit_video\n");
      return TRUE;
  }
-@@ -1637,6 +1644,12 @@
+@@ -1637,6 +1644,12 @@ void gst_tividenc1_populate_codec_header
                  videnc1->codec_data = gst_h264_create_codec_data(hDstBuf);
              }
          }
@@ -185,7 +175,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc1.c
      }
  }
  
-@@ -1645,7 +1658,7 @@
+@@ -1645,7 +1658,7 @@ void gst_tividenc1_populate_codec_header
   *  Function parses and push the output buffer .
   *****************************************************************************/
  GstFlowReturn  gst_tividenc1_parse_and_push (GstTIVidenc1 *videnc1, 
@@ -194,7 +184,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc1.c
  {
      guint8 *data;
      guint   len;
-@@ -1665,6 +1678,13 @@
+@@ -1665,6 +1678,13 @@ GstFlowReturn  gst_tividenc1_parse_and_p
              data[1] = (len >> 16) & 0xff;
              data[0] = (len >> 24) & 0xff;
          }
@@ -208,7 +198,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc1.c
      }
  
      return gst_pad_push(videnc1->srcpad, outBuf);
-@@ -1688,6 +1708,7 @@
+@@ -1688,6 +1708,7 @@ static void* gst_tividenc1_encode_thread
      GstBuffer           *outBuf;
      Int                 bufIdx;
      Int                 ret;
@@ -216,7 +206,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc1.c
  
      /* Calculate the duration of a single frame in this stream */
      frameDuration = gst_tividenc1_frame_duration(videnc1);
-@@ -1791,6 +1812,7 @@
+@@ -1791,6 +1812,7 @@ static void* gst_tividenc1_encode_thread
          /* Invoke the video encoder */
          GST_LOG("invoking the video encoder\n");
          ret   = Venc1_process(videnc1->hVe1, hInBuf, hDstBuf);
@@ -224,7 +214,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc1.c
  
          encDataConsumed = GST_BUFFER_SIZE(encDataWindow);
  
-@@ -1856,7 +1878,8 @@
+@@ -1856,7 +1878,8 @@ static void* gst_tividenc1_encode_thread
  
          /* Parse and Push the transport buffer to the source pad */
          GST_LOG("pushing display buffer to source pad\n");
@@ -234,11 +224,9 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc1.c
              GST_DEBUG("push to source pad failed\n");
              goto thread_failure;
          }
-Index: gstreamer-ti-svn-r611/src/gsttividenc1.h
-===================================================================
---- gstreamer-ti-svn-r611.orig/src/gsttividenc1.h	2012-03-06 21:57:12.760231008 -0800
-+++ gstreamer-ti-svn-r611/src/gsttividenc1.h	2012-03-06 21:57:20.000000000 -0800
-@@ -112,7 +112,7 @@
+--- a/src/gsttividenc1.h
++++ b/src/gsttividenc1.h
+@@ -112,7 +112,7 @@ struct _GstTIVidenc1
    GstTICircBuffer *circBuf;
  
    /* H.264 header */

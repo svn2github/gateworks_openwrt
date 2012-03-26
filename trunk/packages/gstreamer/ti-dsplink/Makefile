@@ -18,23 +18,17 @@ define KernelPackage/ti-dsplink
 	CATEGORY:=Local
 	TITLE:=TI DSP-Link module for communcations with the DSP
 	URL:=http://software-dl.ti.com/dsps/dsps_public_sw/sdo_sb/targetcontent/DSPLink/
-	DEPENDS:=@TARGET_davinci
+	DEPENDS:=@TARGET_davinci ti-xdc
 	FILES:=$(PKG_BUILD_DIR)/kernel_binaries/dm6446/dsplinkk.ko
 endef
 
-define Package/ti-dsplink
-	SECTION:=local
-	CATEGORY:=Local
-	TITLE:=TI DSP BIOS
-	DEPENDS:=+ti-xdc +ti-cg +ti-dspbios
-endef
 
-define Package/ti-dsplink/description
+define KernelPackage/ti-dsplink/description
 	TI DSPLink provides linkage between the General Purpose Processor (GPP) and Digital Signal Processor (DSP)
 endef
 
 define Build/Prepare
-	# deal with retarded TI requirement that path not contain "." by symlinking
+	# deal with TI requirement that path not contain "." by symlinking
 	# "target-arm_v5t_uClibc-0.9.30.1_eabi" to "target".  Do it carefully
 	# so that re-making doesn't break.
 	rm -fr $(TOPDIR)/build_dir/target
@@ -69,8 +63,7 @@ define Build/Compile
 		CROSS_COMPILE=$(TARGET_CROSS) \
 		dsplink
 
-	# Enable XDC-based integration (as per
-	# http://processors.wiki.ti.com/index.php/Building_DSPLink )
+	# Enable XDC-based integration (as per http://processors.wiki.ti.com/index.php/Building_DSPLink )
 	(cd $(PKG_BUILD_DIR)/packages/dsplink/dsp; $(BUILD_DIR)/ti-xdc/xdc clean; $(BUILD_DIR)/ti-xdc/xdc .interfaces )
 	(cd $(PKG_BUILD_DIR)/packages/dsplink/gpp; $(BUILD_DIR)/ti-xdc/xdc clean; $(BUILD_DIR)/ti-xdc/xdc .interfaces )
 endef
@@ -79,9 +72,4 @@ define Build/Clean
 	rm -f $(BUILD_DIR)/$(PKG_NAME)
 endef
 
-define Package/ti-dsplink/install
-	/bin/true
-endef
-
-$(eval $(call BuildPackage,ti-dsplink))
 $(eval $(call KernelPackage,ti-dsplink))

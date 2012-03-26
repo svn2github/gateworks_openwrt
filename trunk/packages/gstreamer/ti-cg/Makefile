@@ -18,7 +18,7 @@ define Package/ti-cg
 	SECTION:=local
 	CATEGORY:=Local
 	TITLE:=TI CGT6X
-	DEPENDS:=
+	DEPENDS:=@TARGET_davinci
 endef
 
 define Package/ti-cg/description

@@ -1,8 +1,6 @@
-Index: gstreamer-ti-svn-r611/src/gstticircbuffer.c
-===================================================================
---- gstreamer-ti-svn-r611.orig/src/gstticircbuffer.c	2012-03-06 22:02:37.685842232 -0800
-+++ gstreamer-ti-svn-r611/src/gstticircbuffer.c	2010-05-18 23:23:08.000000000 -0700
-@@ -175,6 +175,7 @@
+--- a/src/gstticircbuffer.c
++++ b/src/gstticircbuffer.c
+@@ -175,6 +175,7 @@ static void gst_ticircbuffer_init(GTypeI
      circBuf->fixedBlockSize  = FALSE;
      circBuf->consumerAborted = FALSE;
      circBuf->userCopy       = NULL;
@@ -10,7 +8,7 @@ Index: gstreamer-ti-svn-r611/src/gstticircbuffer.c
  
      GST_LOG("end init");
  }
-@@ -403,6 +404,10 @@
+@@ -403,6 +404,10 @@ gboolean gst_ticircbuffer_queue_data(Gst
          gst_ticircbuffer_broadcast_producer(circBuf);
      }
  
@@ -21,7 +19,7 @@ Index: gstreamer-ti-svn-r611/src/gstticircbuffer.c
      goto exit;
  
  exit_fail:
-@@ -512,17 +517,31 @@
+@@ -512,17 +517,31 @@ GstBuffer* gst_ticircbuffer_get_data(Gst
      gst_ticircbuffer_reset_read_pointer(circBuf);
  
      /* Don't return any data util we have a full window available */
@@ -55,7 +53,7 @@ Index: gstreamer-ti-svn-r611/src/gstticircbuffer.c
      /* Set the size of the buffer to be no larger than the window size.  Some
       * audio codecs have an issue when you pass a buffer larger than 64K.
       * We need to pass it smaller buffer sizes though, as the EOS is detected
-@@ -651,6 +670,14 @@
+@@ -651,6 +670,14 @@ void gst_ticircbuffer_drain(GstTICircBuf
      }
  }
  
@@ -70,11 +68,9 @@ Index: gstreamer-ti-svn-r611/src/gstticircbuffer.c
  /******************************************************************************
   * gst_ticircbuffer_shift_data
   *    Look for uncopied data in the last window and move it to the first one.
-Index: gstreamer-ti-svn-r611/src/gstticircbuffer.h
-===================================================================
---- gstreamer-ti-svn-r611.orig/src/gstticircbuffer.h	2012-03-06 22:02:37.693842272 -0800
-+++ gstreamer-ti-svn-r611/src/gstticircbuffer.h	2010-05-18 22:53:38.000000000 -0700
-@@ -71,6 +71,7 @@
+--- a/src/gstticircbuffer.h
++++ b/src/gstticircbuffer.h
+@@ -71,6 +71,7 @@ struct _GstTICircBuffer {
      /* Input Thresholds */
      Int32              windowSize;
      gboolean           drain;
@@ -82,7 +78,7 @@ Index: gstreamer-ti-svn-r611/src/gstticircbuffer.h
      Int32              bytesNeeded;
  
      /* Blocking Conditions to Throttle I/O */
-@@ -99,6 +100,8 @@
+@@ -99,6 +100,8 @@ gboolean         gst_ticircbuffer_time_c
  GstBuffer*       gst_ticircbuffer_get_data(GstTICircBuffer *circBuf);
  void             gst_ticircbuffer_drain(GstTICircBuffer *circBuf,
                       gboolean status);
@@ -91,11 +87,9 @@ Index: gstreamer-ti-svn-r611/src/gstticircbuffer.h
  void             gst_ticircbuffer_set_display(GstTICircBuffer *circBuf,
                       gboolean disp);
  void             gst_ticircbuffer_consumer_aborted(GstTICircBuffer *circBuf);
-Index: gstreamer-ti-svn-r611/src/gsttividdec.c
-===================================================================
---- gstreamer-ti-svn-r611.orig/src/gsttividdec.c	2012-03-06 22:05:32.110707168 -0800
-+++ gstreamer-ti-svn-r611/src/gsttividdec.c	2012-03-06 22:05:51.000000000 -0800
-@@ -1168,6 +1168,8 @@
+--- a/src/gsttividdec.c
++++ b/src/gsttividdec.c
+@@ -1168,6 +1168,8 @@ static gboolean gst_tividdec_codec_start
      viddec->circBuf =
          gst_ticircbuffer_new(Vdec_getInBufSize(viddec->hVd), 3, FALSE);
  
@@ -104,11 +98,9 @@ Index: gstreamer-ti-svn-r611/src/gsttividdec.c
      if (viddec->circBuf == NULL) {
          GST_ELEMENT_ERROR(viddec, RESOURCE, NO_SPACE_LEFT,
          ("failed to create circular input buffer\n"), (NULL));
-Index: gstreamer-ti-svn-r611/src/gsttividdec2.c
-===================================================================
---- gstreamer-ti-svn-r611.orig/src/gsttividdec2.c	2012-03-06 22:05:36.470728776 -0800
-+++ gstreamer-ti-svn-r611/src/gsttividdec2.c	2012-03-06 22:06:35.000000000 -0800
-@@ -1130,6 +1130,12 @@
+--- a/src/gsttividdec2.c
++++ b/src/gsttividdec2.c
+@@ -1130,6 +1130,12 @@ static GstStateChangeReturn gst_tividdec
              if (!gst_tividdec2_exit_video(viddec2)) {
                  return GST_STATE_CHANGE_FAILURE;
              }
@@ -121,7 +113,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividdec2.c
              break;
  
          case GST_STATE_CHANGE_READY_TO_PAUSED:
-@@ -1270,6 +1276,8 @@
+@@ -1270,6 +1276,8 @@ static gboolean gst_tividdec2_codec_star
      viddec2->circBuf =
          gst_ticircbuffer_new(Vdec2_getInBufSize(viddec2->hVd), 3, FALSE);
  
@@ -130,7 +122,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividdec2.c
      if (viddec2->circBuf == NULL) {
          GST_ELEMENT_ERROR(viddec2, RESOURCE, NO_SPACE_LEFT,
          ("failed to create circular input buffer\n"), (NULL));
-@@ -1587,10 +1595,12 @@
+@@ -1587,10 +1595,12 @@ thread_exit:
       */
      Rendezvous_force(viddec2->waitOnDecodeDrain);
  
@@ -143,3 +135,59 @@ Index: gstreamer-ti-svn-r611/src/gsttividdec2.c
  
      gst_object_unref(viddec2);
  
+--- a/src/gsttividenc1.c
++++ b/src/gsttividenc1.c
+@@ -1416,6 +1416,12 @@ static GstStateChangeReturn gst_tividenc
+             if (!gst_tividenc1_exit_video(videnc1)) {
+                 return GST_STATE_CHANGE_FAILURE;
+             }
++            
++						/* Stop codec engine */
++						if (gst_tividenc1_codec_stop(videnc1) < 0) {
++							GST_ERROR("failed to stop codec\n");
++						}
++
+             break;
+ 
+         default:
+@@ -1586,7 +1592,7 @@ static gboolean gst_tividenc1_codec_star
+ 
+     /* Create a circular input buffer */
+     if (videnc1->numInputBufs == 0) {
+-        videnc1->numInputBufs = 2;
++        videnc1->numInputBufs = 3;
+     }
+ 
+     /* Check if we need to create circular buffer with different size */
+@@ -1597,6 +1603,7 @@ static gboolean gst_tividenc1_codec_star
+         inBufSize = Venc1_getInBufSize(videnc1->hVe1);
+     }
+ 
++    printf("Input buffer size %d\n", inBufSize* videnc1->numInputBufs);
+     videnc1->circBuf = gst_ticircbuffer_new(inBufSize, 
+                             videnc1->numInputBufs, TRUE);
+ 
+@@ -1621,7 +1628,7 @@ static gboolean gst_tividenc1_codec_star
+     gfxAttrs.bAttrs.useMask = gst_tividenc1_CODEC_FREE;
+ 
+     if (videnc1->numOutputBufs == 0) {
+-        videnc1->numOutputBufs = 3;
++        videnc1->numOutputBufs = 2;
+     }
+     videnc1->hOutBufTab =
+         BufTab_create(videnc1->numOutputBufs,
+@@ -1938,12 +1945,12 @@ thread_exit:
+      * they get the EOS.
+      */
+     Rendezvous_force(videnc1->waitOnEncodeDrain);
+-
++#if 0
+     /* Stop codec engine */
+     if (gst_tividenc1_codec_stop(videnc1) < 0) {
+         GST_ERROR("failed to stop codec\n");
+     }
+-
++#endif
+     gst_object_unref(videnc1);
+ 
+     GST_LOG("exit video encode_thread (%d)\n", (int)threadRet);

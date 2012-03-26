@@ -32,6 +32,7 @@ define Package/ti-ce
 	SECTION:=local
 	CATEGORY:=Local
 	TITLE:=TI Codec Engine
+	DEPENDS:=@TARGET_davinci
 endef
 
 define Package/ti-ce/description

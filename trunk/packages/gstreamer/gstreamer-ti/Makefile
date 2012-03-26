@@ -35,7 +35,7 @@ define Package/gstreamer-ti
 	CATEGORY:=Local
 	TITLE:=TI GStreamer plugin
 	URL:=http://gstreamer.ti.com/
-	DEPENDS:=+ti-dmai +gstreamer +gst-plugins-base +gst-plugins-good +libiconv-full
+	DEPENDS:=@TARGET_davinci +ti-dmai +gstreamer +gst-plugins-base +gst-plugins-good +libiconv-full
 endef
 
 define Package/gstreamer-ti/description

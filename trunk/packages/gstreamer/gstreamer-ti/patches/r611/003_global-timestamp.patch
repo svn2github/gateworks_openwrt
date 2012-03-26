@@ -1,7 +1,5 @@
-Index: gstreamer-ti-svn-r611/src/gsttividenc1.c
-===================================================================
---- gstreamer-ti-svn-r611.orig/src/gsttividenc1.c	2012-03-06 22:01:13.833426425 -0800
-+++ gstreamer-ti-svn-r611/src/gsttividenc1.c	2012-03-06 22:01:40.000000000 -0800
+--- a/src/gsttividenc1.c
++++ b/src/gsttividenc1.c
 @@ -61,6 +61,11 @@
  GST_DEBUG_CATEGORY_STATIC (gst_tividenc1_debug);
  #define GST_CAT_DEFAULT gst_tividenc1_debug
@@ -14,7 +12,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc1.c
  #define DEFAULT_BIT_RATE 2000000
  #define INVALID_DEVICE   Cpu_Device_COUNT
  
-@@ -1174,6 +1179,11 @@
+@@ -1174,6 +1179,11 @@ static GstFlowReturn gst_tividenc1_chain
          goto exit;
      }
  
@@ -26,7 +24,7 @@ Index: gstreamer-ti-svn-r611/src/gsttividenc1.c
  exit:
      gst_buffer_unref(buf);
      return flow;
-@@ -1866,7 +1876,11 @@
+@@ -1866,7 +1876,11 @@ static void* gst_tividenc1_encode_thread
          if (videnc1->genTimeStamps &&
              GST_CLOCK_TIME_IS_VALID(encDataTime)) {
              GST_LOG("video timestamp value: %llu\n", encDataTime);

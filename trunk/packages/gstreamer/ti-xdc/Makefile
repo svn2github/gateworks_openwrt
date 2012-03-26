@@ -20,6 +20,7 @@ define Package/ti-xdc
 	CATEGORY:=Local
 	URL:=http://software-dl.ti.com/dsps/dsps_public_sw/sdo_sb/targetcontent/rtsc
 	TITLE:=TI XDC
+	DEPENDS:=@TARGET_davinci
 endef
 
 define Package/ti-xdc/description

@@ -17,6 +17,7 @@ define Package/ti-dspbios
 	CATEGORY:=Local
 	URL:=http://software-dl.ti.com/dsps/dsps_public_sw/sdo_sb/targetcontent/bios/dspbios/
 	TITLE:=TI DSP BIOS
+	DEPENDS:=@TARGET_davinci
 endef
 
 define Package/ti-dspbios/description

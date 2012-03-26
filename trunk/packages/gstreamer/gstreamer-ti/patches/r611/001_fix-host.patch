@@ -1,8 +1,6 @@
-Index: gstreamer-ti-svn-r611/Makefile.external
-===================================================================
---- gstreamer-ti-svn-r611.orig/Makefile.external	2012-03-06 21:33:55.249301126 -0800
-+++ gstreamer-ti-svn-r611/Makefile.external	2012-03-06 21:34:32.801487342 -0800
-@@ -47,7 +47,7 @@
+--- a/Makefile.external
++++ b/Makefile.external
+@@ -47,7 +47,7 @@ ifeq ($(PLATFORM), dm355)
  endif
  
  ifeq ($(PLATFORM), dm6446)
@@ -11,7 +9,7 @@ Index: gstreamer-ti-svn-r611/Makefile.external
      export XDC_PLATFORM = ti.platforms.evmDM6446
  endif
  
-@@ -75,7 +75,7 @@
+@@ -75,7 +75,7 @@ configure:
  	./autogen.sh --noconfigure
  
  Makefile: configure
@@ -20,11 +18,9 @@ Index: gstreamer-ti-svn-r611/Makefile.external
  
  omap3530: Makefile
  	$(MAKE) -f Makefile
-Index: gstreamer-ti-svn-r611/src/Makefile.am
-===================================================================
---- gstreamer-ti-svn-r611.orig/src/Makefile.am  2012-03-06 21:49:17.193872807 -0800
-+++ gstreamer-ti-svn-r611/src/Makefile.am       2012-03-06 21:49:42.986000703 -0800
-@@ -18,7 +18,7 @@
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -18,7 +18,7 @@ noinst_HEADERS = gsttiauddec.h gsttiaudd
  # XDC Configuration
  CONFIGURO     = $(XDC_INSTALL_DIR)/xs xdc.tools.configuro
  BUILT_SOURCES = $(XDC_CONFIG_BASENAME)/compiler.opt $(XDC_CONFIG_BASENAME)/linker.cmd
@@ -32,5 +28,4 @@ Index: gstreamer-ti-svn-r611/src/Makefile.am
 +XDC_PATH      = .;$(XDC_INSTALL_DIR)/packages;$(LINK_INSTALL_DIR)/packages;$(FC_INSTALL_DIR)/packages;$(CE_INSTALL_DIR)/packages;$(XDAIS_INSTALL_DIR)/packages;$(CODEC_INSTALL_DIR)/packages;$(CMEM_INSTALL_DIR)/packages;$(DMAI_INSTALL_DIR)/packages;$(LPM_INSTALL_DIR)/packages;$(XDC_USER_PATH);$(EDMA3_LLD_INSTALL_DIR)/packages;
  
  gstticodecs_platform.c :
-        ln -s $(srcdir)/gstticodecs_$(PLATFORM).c gstticodecs_platform.c
-
+ 	ln -s $(srcdir)/gstticodecs_$(PLATFORM).c gstticodecs_platform.c
