@@ -22,6 +22,8 @@ define Build/Prepare
 	$(CP) ./src/* $(PKG_BUILD_DIR)/
 endef
 
+TARGET_LDFLAGS += -lm
+
 define Package/test-audio/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/test_audio $(1)/usr/bin/
