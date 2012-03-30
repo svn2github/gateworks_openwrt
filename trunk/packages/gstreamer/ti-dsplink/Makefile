@@ -2,10 +2,10 @@ include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=ti-dsplink
-#PKG_VERSION:=1_65_00_03
-#PKG_MD5SUM:=1bda596b631bd2f517edc70f6be4f2ca
-PKG_VERSION:=1_65_00_02
-PKG_MD5SUM:=e05b1f2b2b4a1a92c15746e9c541a80f
+PKG_VERSION:=1_65_00_03
+PKG_MD5SUM:=1bda596b631bd2f517edc70f6be4f2ca
+#PKG_VERSION:=1_65_00_02
+#PKG_MD5SUM:=e05b1f2b2b4a1a92c15746e9c541a80f
 
 PKG_SOURCE:=dsplink_linux_$(PKG_VERSION).tar.gz
 PKG_BUILD_DIR:=$(TOPDIR)/build_dir/target/dsplink_linux_$(PKG_VERSION)
