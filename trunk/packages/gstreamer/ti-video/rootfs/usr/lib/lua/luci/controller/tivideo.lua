@@ -5,6 +5,6 @@ function index()
 		return
 	end
 	
-	entry({"admin", "status", "tivideo"}, template("tivideo"), "Video", 99).dependent = false;
-	entry({"admin", "services", "tivideo"}, cbi("tivideo/tivideo"), "Video", 99).dependent = false;
+	entry({"admin", "status", "tivideo"}, template("tivideo"), "Video", 1).dependent = false;
+	entry({"admin", "services", "tivideo"}, cbi("tivideo/tivideo"), "Video", 1).dependent = false;
 end
