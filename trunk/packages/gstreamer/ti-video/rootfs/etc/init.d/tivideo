@@ -2,12 +2,32 @@
 # Copyright (C) 2006 OpenWrt.org
 START=45
 
+# NOTE: MPEG4 not currently supported
+
 GSTREAMER_BIN="/usr/bin/gst-launch-0.10"
 
+# h264 encode/decode (accounts for using resizer if <740x480)
+POOLS_h264=1x5250000,3x829440,3x691200
+
+# MPEG4 (currently broken)
+# mpeg4 encode/decode
+#POOLS_mpeg4=1x2073600,2x1036800,3x691200,2x253440
+
+# $1 - codec
 load_modules() {
-	grep cmemk /proc/modules >/dev/null || {
-		insmod cmemk phys_start=0x87600000 phys_end=0x88000000 \
-			pools=1x5250000,2x829440,4x691200,1x8192,1x1
+	local codec=$1
+	local pools
+
+	echo "Loading cmemk for $codec"
+	eval pools=\$POOLS_${codec}
+	echo "POOLS_$1=$pools"
+	[ "$pools" ] || {
+		echo "Unsupported codec: $codec"
+		exit 1
+	}
+	insmod cmemk phys_start=0x87600000 phys_end=0x88000000 pools=$pools
+
+	grep dsplinkk /proc/modules >/dev/null || {
 		insmod dsplinkk
 	}
 }
@@ -18,7 +38,6 @@ load_video() {
 	GSTREAMER_ARGS=""
 	A_ARGS=""
 	append A_ARGS "a=rtpmap:96"
-	
 	
 	local type
 	local host
@@ -31,18 +50,20 @@ load_video() {
 	local height
 	local ratecontrol
 	local quality
+	local resolution
 	
-	config_get type $1 type
+	config_get type $1 type "server"
 	config_get host $1 host
 	config_get port $1 port
-	config_get fps $1 fps "none"
-	config_get bps $1 bps "none"
-	config_get codec $1 codec
+	config_get fps $1 fps "30"
+	config_get bps $1 bps "200000"
+	config_get codec $1 codec "h264"
 	config_get jitter $1 jitter "0"
-	config_get width $1 width "720"
-	config_get height $1 height "480"
+	config_get resolution $1 resolution "720x480"
 	config_get ratecontrol $1 ratecontrol "2"
 	config_get quality $1 quality "3"
+	width="${resolution%*x*}"
+	height="${resolution##*x}"
 	
 	echo "setting type ${type}"
 	echo "setting host ${host}"
@@ -50,7 +71,12 @@ load_video() {
 	echo "setting fps ${fps}"
 	echo "setting bps ${bps}"
 	echo "setting codec ${codec}"
+	echo "setting resolution ${width}x${height}"
 	
+	grep cmemk /proc/modules >/dev/null || {
+		load_modules $codec
+	}
+
 	[ "$type" == "server" ] && {
 		[ "$fps" == "30" ] && {
 			append GSTREAMER_ARGS "v4l2src always-copy=0 queue-size=1 !"	
@@ -67,7 +93,7 @@ load_video() {
 			append A_ARGS "H264/90000"
 			append GSTREAMER_ARGS "codecName=h264enc ! rtph264pay pt=96"
 		} || {
-			append A_ARGS "MPEG4/90000"
+			append A_ARGS "MP4V-ES/90000"
 			append GSTREAMER_ARGS "codecName=mpeg4enc ! rtpmp4vpay pt=96"
 		}
 		append GSTREAMER_ARGS "! udpsink host=$host port=$port"
@@ -76,7 +102,7 @@ load_video() {
 		[ "$codec" == "h264" ] && {
 			append GSTREAMER_ARGS "encoding-name=(string)H264\" !" 
 		} || {
-			append GSTREAMER_ARGS "encoding-name=(string)MPEG4\" !"
+			append GSTREAMER_ARGS "encoding-name=(string)MP4V-ES\" !"
 		}
 		[ "$jitter" == "0" ] || {
 			append GSTREAMER_ARGS "gstrtpjitterbuffer latency=$jitter !"
@@ -92,8 +118,7 @@ load_video() {
 		} || {
 			append GSTREAMER_ARGS "codecName=mpeg4dec !"
 		}
-#		append GSTREAMER_ARGS "TIVidResize ! video/x-raw-yuv,width=720,height=480 !"
-		append GSTREAMER_ARGS "TIDmaiVideoSink videoStd=D1_NTSC videoOutput=composite sync=0 accelFrameCopy=1"
+		append GSTREAMER_ARGS "TIDmaiVideoSink videoStd=D1_NTSC videoOutput=composite resizer=1 sync=0"
 	}
 	
 	echo "gstreamer args = $GSTREAMER_ARGS"
@@ -116,8 +141,7 @@ load_video() {
 }
 
 start() {
-	load_modules
-
+	# Note: we dont support multiple video sections
 	config_load tivideo
 	config_foreach load_video video
 }
@@ -125,9 +149,11 @@ start() {
 stop() {
 	[ -f /var/run/video.pid ] && {
 		start-stop-daemon -K -q \
-			-p /var/run/video.pid -s INT
+			-p /var/run/video.pid -s KILL
 		
 		rm -f /var/run/video.pid
+		sleep 4
+		# re-enable dymaic module load/unload when supporting multiple codecs
+		#rmmod cmemk
 	}
-	sleep 3
 }

@@ -10,7 +10,7 @@ define Package/ti-video
 	SECTION:=local
 	CATEGORY:=Local
 	TITLE:=Streaming Video client/server
-	DEPENDS:=@TARGET_davinci +gst-ti-plugin-minimal +gstreamer-utils
+	DEPENDS:=@TARGET_davinci +gstreamer-ti +gstreamer-utils
 endef
 
 define Package/ti-video/description

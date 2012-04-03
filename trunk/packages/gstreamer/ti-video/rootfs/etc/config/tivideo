@@ -1,9 +1,14 @@
 config 'video'
-	option 'type' 'server'
+	# common options
 	option 'host' '225.3.3.3'
 	option 'port' '5000'
 	option 'codec' 'h264'
-	option 'width' '720'
-	option 'height' '480'
-	option 'fps' '30'
+
+	# server options
+	option 'type' 'server'
+	option 'resolution' '720x480'
 	option 'bps' '2000000'
+
+	# client options
+	#option 'type' 'client'
+	#option 'jitter' '0'
