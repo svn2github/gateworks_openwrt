@@ -1,3 +1,6 @@
+fix decoder latency by sending data to decoder as long as there is at least
+200 bytes of data ready
+
 --- a/src/gstticircbuffer.c
 +++ b/src/gstticircbuffer.c
 @@ -175,6 +175,7 @@ static void gst_ticircbuffer_init(GTypeI
