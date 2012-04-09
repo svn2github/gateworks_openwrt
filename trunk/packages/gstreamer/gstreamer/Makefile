@@ -90,6 +90,7 @@ CONFIGURE_ARGS += \
 	--disable-valgrind \
 	--without-libiconv-prefix \
 	--without-libintl-prefix \
+	--with-buffer-alignment=32 \
 	--without-x \
 
 #CONFIGURE_ARGS += \
