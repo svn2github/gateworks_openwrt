@@ -26,7 +26,7 @@ define Package/gst-rtsp
   CATEGORY:=Multimedia
   TITLE:=Gstreamer based RTSP support library
   URL:=http://people.freedesktop.org/~wtay/
-  DEPENDS:=+gstreamer +libiconv-full
+  DEPENDS:=+gstreamer +gst-plugins-base +libiconv-full
 endef
 
 define Package/gst-rtsp/description
