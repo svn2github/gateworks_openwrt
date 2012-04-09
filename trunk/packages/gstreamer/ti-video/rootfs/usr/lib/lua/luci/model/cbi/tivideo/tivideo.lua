@@ -62,7 +62,7 @@ p7.default = "2"
 
 p4 = s:option(Value, "bps", "BitRate", "The BitRate to Send")
 p4:depends("type","server")
-p4.datatype = "range(200,6000000)"
+p4.datatype = "range(100,2000000)"
 p4.default = 2000000
 
 --p2 = s:option(ListValue, "codec", "Codec", "The Codec to use")
