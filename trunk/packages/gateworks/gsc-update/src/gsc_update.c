@@ -47,7 +47,7 @@ void print_help(void)
 	print_banner();
 	printf("\nUsage:\n");
 	printf("\t-f,--flash <filename>   Program flash device using [filename]\n");
-	printf("\t-f,--crc <filename>     Show CRC of [filename] without programming flash\n");
+	printf("\t-c,--crc <filename>     Show CRC of [filename] without programming flash\n");
 	printf("\t-v,--verbose            Increase Verbosity\n");
 	printf("\n");
 }
