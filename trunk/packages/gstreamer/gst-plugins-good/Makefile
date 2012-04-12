@@ -78,7 +78,7 @@ CONFIGURE_ARGS += \
 	--disable-goom \
 	--disable-goom2k1 \
 	--disable-hal \
-	--disable-jpeg \
+	$(call GST_COND_SELECT,jpeg) \
 	--disable-libcaca \
 	--disable-libdv \
 	--disable-libpng \
@@ -177,5 +177,6 @@ $(eval $(call GstBuildPlugin,wavparse,Wav parser,audio riff tag,,))
 $(eval $(call GstBuildPlugin,video4linux2,Elements for Video4Linux2 sources,video,,))
 $(eval $(call GstBuildPlugin,alaw,Alaw audio coding,audio,,))
 $(eval $(call GstBuildPlugin,mulaw,Mulaw audio coding,audio,,))
+$(eval $(call GstBuildPlugin,jpeg,JPEG image coding,,,+libjpeg))
 
 $(eval $(call BuildPackage,gst-plugins-good))
