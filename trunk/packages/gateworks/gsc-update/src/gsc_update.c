@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <getopt.h>
 
 #include "i2c.h"
 #include "i2c_upgrader.h"
@@ -45,7 +46,9 @@ void print_help(void)
 {
 	print_banner();
 	printf("\nUsage:\n");
-	printf("\t-f <filename>\tProgram flash device using [filename]\n");
+	printf("\t-f,--flash <filename>   Program flash device using [filename]\n");
+	printf("\t-f,--crc <filename>     Show CRC of [filename] without programming flash\n");
+	printf("\t-v,--verbose            Increase Verbosity\n");
 	printf("\n");
 }
 
@@ -65,38 +68,40 @@ int main(int argc, char **argv)
 #endif
 	unsigned char calc_crc_only = 0;
 	unsigned short crc;
+	unsigned char verbose = 0;
 	char device[16];
 
 	int i, j, k;
 	int file;
 
-	for (i = 1; i < argc; i++) {
-		if (argv[i][0] == '-') {
-			switch(argv[i][1]) {
+	while (1) {
+		int optind = 0;
+		int c;
+		static struct option long_options[] = {
+			{"flash", 1, 0, 'f'},
+			{"crc", 1, 0, 'c'},
+			{"verbose", 0, 0, 'v'},
+			{0, 0, 0, 0}
+		};
+
+		c = getopt_long(argc, argv, "f:c:vh?", long_options, &optind);
+		if (c == -1)
+			break;
+
+		switch (c) {
 			case 'f':
-				if ((i+1 < argc) && (argv[i+1][0] != '-'))
-				{
-					i++;
-					prog_filename = argv[i];
-				}
-				else
-				{
-					print_help();
-				}
+				prog_filename = optarg;
 				break;
 			case 'c':
-				if ((i+1 < argc) && (argv[i+1][0] != '-'))
-				{
-					i++;
-					prog_filename = argv[i];
-					calc_crc_only = 1;
-				}
-				else
-				{
-					print_help();
-				}
+				prog_filename = optarg;
+				calc_crc_only = 1;
 				break;
-			}
+			case 'v':
+				verbose++;
+				break;
+			default:
+				print_help();
+				break;
 		}
 	}
 
@@ -110,6 +115,16 @@ int main(int argc, char **argv)
 	/* parse and validate file */
 	if (parse_data_file(prog_filename, data, address, length)) {
 		exit(2);
+	}
+
+	/* display info about memory segments */
+	if (verbose) {
+		printf("Segments:\n");
+		for(i=0;i<16;i++) {
+			if (length[i])
+				printf("\t0x%04x:%05d(%04x) bytes\n",
+				       address[i], length[i], length[i]);
+		}
 	}
 
 	/* calculate CRC over parsed file */
@@ -322,13 +337,13 @@ int parse_data_file(char *filename, unsigned char data[16][16384], short address
 	int i = 0, j = 0, num_scan = 0;
 	int linenum = 0;
 
-	memset(t, 0, 16*4);
+	memset(t, 0, sizeof(t));
 	memset(length, 0, 16*2);
 
 	fd = fopen(filename, "r");
 	if (!fd)
 		return -1;
-	while (fgets(line, 1024, fd)) {
+	while (fgets(line, sizeof(line), fd)) {
 		linenum++;
 		if (linenum == 1 && line[0] != '@') {
 			fprintf(stderr, "Invalid GSC firmware file\n");
