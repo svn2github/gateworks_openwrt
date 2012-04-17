@@ -14,7 +14,7 @@ define Package/ti-codecs
 	CATEGORY:=Local
 	URL:=http://www.ti.com/tool/dm644xcodecs
 	TITLE:=TI Codec algorithms for audio and video
-	DEPENDS:=@TARGET_davinci +ti-xdc +ti-cg +ti-dspbios +ti-dsplink +ti-ce
+	DEPENDS:=@TARGET_davinci +ti-xdc +ti-cg +ti-dspbios +kmod-ti-dsplink +ti-ce
 endef
 
 define Package/ti-codecs/description
