@@ -17,12 +17,12 @@
 				
 				for (var i = 1; i <= 12; i++) {
 					var id = 'in' + i;
-					if (info.input_volt[i-1] == 0xffffff) {
+					if (info.input_volt[i-1] == 0xffffff || !info.input_name[i-1])
+					{
 						document.getElementById(id).style.display = 'none';
 					} else {
 						document.getElementById(id).style.display = 'table-row';
 						if (i == 12) {
-							//document.getElementById(id + '_name').innerHTML = String.format('%s Current', info.input_name[i-1]);
 							document.getElementById(id + '_name').innerHTML = "System Current";
 							document.getElementById(id + '_v').innerHTML = String.format('%.02fA', info.input_volt[i-1] / 1000);
 						} else {
