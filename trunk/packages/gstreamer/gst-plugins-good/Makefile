@@ -177,6 +177,6 @@ $(eval $(call GstBuildPlugin,wavparse,Wav parser,audio riff tag,,))
 $(eval $(call GstBuildPlugin,video4linux2,Elements for Video4Linux2 sources,video,,+libv4l))
 $(eval $(call GstBuildPlugin,alaw,Alaw audio coding,audio,,))
 $(eval $(call GstBuildPlugin,mulaw,Mulaw audio coding,audio,,))
-$(eval $(call GstBuildPlugin,jpeg,JPEG image coding,,,+libjpeg))
+$(eval $(call GstBuildPlugin,jpeg,JPEG image coding,jpeg,,+libjpeg))
 
 $(eval $(call BuildPackage,gst-plugins-good))
