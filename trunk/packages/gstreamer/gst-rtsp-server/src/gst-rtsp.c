@@ -35,7 +35,7 @@
 
 #define VERSION "1.0.0"
 
-static gint verbose = 1;
+static gint verbose = 0;
 
 static GstRTSPFilterResult
 pool_filter(GstRTSPSessionPool *pool, GstRTSPSession *session, gpointer data)
