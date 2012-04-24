@@ -21,15 +21,11 @@ define Package/ti-video/conffiles
 	/etc/config/tivideo
 endef
 
-define Build/Prepare
-	$(CP) -r ./rootfs $(PKG_BUILD_DIR)
-endef
-
 define Build/Compile
 endef
 
 define Package/ti-video/install
-	$(CP) $(PKG_BUILD_DIR)/rootfs/* $(1)
+	$(CP) ./files/* $(1)/
 endef
 
 $(eval $(call BuildPackage,ti-video))
