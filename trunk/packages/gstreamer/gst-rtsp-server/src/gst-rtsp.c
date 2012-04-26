@@ -127,7 +127,7 @@ parse_config(gchar *configfile)
 }
 
 static GstRTSPMediaFactory *
-add_stream(GstRTSPMediaMapping *mapping, gchar *_path, gchar *_pipeline)
+add_stream(GstRTSPMediaMapping *mapping, gchar *_path, gchar *_pipeline, gboolean shared)
 {
 	GstRTSPMediaFactory *factory;
 	gchar *path;
@@ -156,6 +156,7 @@ add_stream(GstRTSPMediaMapping *mapping, gchar *_path, gchar *_pipeline)
 	factory = gst_rtsp_media_factory_new ();
 
 	gst_rtsp_media_factory_set_launch (factory, pipeline);
+	gst_rtsp_media_factory_set_shared (factory, shared);
 
 	/* attach the test factory to the /test url */
 	gst_rtsp_media_mapping_add_factory (mapping, path, factory);
@@ -180,7 +181,7 @@ main (int argc, char *argv[])
 	gchar *address = "0.0.0.0";
 	gchar *service = "rtsp";
 	gint backlog = 0;
-	gboolean shared = TRUE;
+	gboolean shared = FALSE;
 	gchar *host = NULL; 
 	//gchar *configfile = "/etc/rtspd.conf";
 	gchar *configfile = NULL;
@@ -190,7 +191,7 @@ main (int argc, char *argv[])
 	GOptionEntry options[] = {
 		{"config", 'f', 0, G_OPTION_ARG_STRING, &configfile, "config file", "file"},
 		{"address", 'i', 0, G_OPTION_ARG_STRING, &address, "address to listen on", "addr"},
-		{"service", NULL, 0, G_OPTION_ARG_STRING, &service, "service to listen on", "service"},
+		{"service", 0, 0, G_OPTION_ARG_STRING, &service, "service to listen on", "service"},
 		{"shared", 's', 0, G_OPTION_ARG_NONE, &shared, "share streams where possible", NULL},
 		{"debug", 'd', 0, G_OPTION_ARG_NONE, &verbose, "debug messages", NULL},
 		{NULL}
@@ -245,7 +246,7 @@ main (int argc, char *argv[])
 /*
 	streams = g_slist_append(streams, add_stream(mapping, "/test",
 		"videotestsrc ! video/x-raw-yuv,width=320,height=240,framerate=10/1 ! "
-		"x264enc ! queue ! rtph264pay name=pay0 pt=96 ! audiotestsrc ! audio/x-raw-int,rate=8000 ! alawenc ! rtppcmapay name=pay1 pt=97 "")"));
+		"x264enc ! queue ! rtph264pay name=pay0 pt=96 ! audiotestsrc ! audio/x-raw-int,rate=8000 ! alawenc ! rtppcmapay name=pay1 pt=97 "")", shared));
 */
 
 	if (configfile) {
@@ -261,7 +262,7 @@ main (int argc, char *argv[])
 		 */
 		for (i = 0; i < g_slist_length(list); i+=2) {
 			GstRTSPMediaFactory *factory = add_stream(mapping,
-				g_slist_nth_data(list, i), g_slist_nth_data(list, i+1));
+				g_slist_nth_data(list, i), g_slist_nth_data(list, i+1), shared);
 			streams = g_slist_append(streams, factory);
 		}
 		g_slist_free(list);
@@ -270,7 +271,7 @@ main (int argc, char *argv[])
 	/* parse commandline arguments */
 	i = 1;
 	while ( (argc - i) >= 2) {
-		GstRTSPMediaFactory *factory = add_stream(mapping, argv[i], argv[i+1]);
+		GstRTSPMediaFactory *factory = add_stream(mapping, argv[i], argv[i+1], shared);
 		streams = g_slist_append(streams, factory);
 		i+=2;
 	}
@@ -278,7 +279,7 @@ main (int argc, char *argv[])
 	/* ensure we have streams mapped */
 	if (g_slist_length(streams) == 0) {
 		g_print ("Error: no streams defined\n");
-		g_print (g_option_context_get_help(ctx, 0, NULL));
+		g_print ("%s\n", g_option_context_get_help(ctx, 0, NULL));
 		return -1;
 	}
 	g_option_context_free(ctx);
