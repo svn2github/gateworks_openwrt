@@ -127,7 +127,8 @@ parse_config(gchar *configfile)
 }
 
 static GstRTSPMediaFactory *
-add_stream(GstRTSPMediaMapping *mapping, gchar *_path, gchar *_pipeline, gboolean shared)
+add_stream(GstRTSPMediaMapping *mapping, gchar *_path, gchar *_pipeline,
+	gboolean shared, gboolean force_mcast)
 {
 	GstRTSPMediaFactory *factory;
 	gchar *path;
@@ -157,6 +158,12 @@ add_stream(GstRTSPMediaMapping *mapping, gchar *_path, gchar *_pipeline, gboolea
 
 	gst_rtsp_media_factory_set_launch (factory, pipeline);
 	gst_rtsp_media_factory_set_shared (factory, shared);
+#ifndef NO_FORCE
+	if (force_mcast) {
+		gst_rtsp_media_factory_set_protocols (factory, 
+			GST_RTSP_LOWER_TRANS_UDP_MCAST);
+	}
+#endif
 
 	/* attach the test factory to the /test url */
 	gst_rtsp_media_mapping_add_factory (mapping, path, factory);
@@ -182,6 +189,7 @@ main (int argc, char *argv[])
 	gchar *service = "rtsp";
 	gint backlog = 0;
 	gboolean shared = FALSE;
+	gboolean force_mcast = FALSE;
 	gchar *host = NULL; 
 	//gchar *configfile = "/etc/rtspd.conf";
 	gchar *configfile = NULL;
@@ -193,6 +201,7 @@ main (int argc, char *argv[])
 		{"address", 'i', 0, G_OPTION_ARG_STRING, &address, "address to listen on", "addr"},
 		{"service", 0, 0, G_OPTION_ARG_STRING, &service, "service to listen on", "service"},
 		{"shared", 's', 0, G_OPTION_ARG_NONE, &shared, "share streams where possible", NULL},
+		{"force-mcast", 0, 0, G_OPTION_ARG_NONE, &force_mcast, "force multicast", NULL},
 		{"debug", 'd', 0, G_OPTION_ARG_NONE, &verbose, "debug messages", NULL},
 		{NULL}
 	};
@@ -246,7 +255,7 @@ main (int argc, char *argv[])
 /*
 	streams = g_slist_append(streams, add_stream(mapping, "/test",
 		"videotestsrc ! video/x-raw-yuv,width=320,height=240,framerate=10/1 ! "
-		"x264enc ! queue ! rtph264pay name=pay0 pt=96 ! audiotestsrc ! audio/x-raw-int,rate=8000 ! alawenc ! rtppcmapay name=pay1 pt=97 "")", shared));
+		"x264enc ! queue ! rtph264pay name=pay0 pt=96 ! audiotestsrc ! audio/x-raw-int,rate=8000 ! alawenc ! rtppcmapay name=pay1 pt=97 "")", shared, gboolean force_mcast));
 */
 
 	if (configfile) {
@@ -262,7 +271,9 @@ main (int argc, char *argv[])
 		 */
 		for (i = 0; i < g_slist_length(list); i+=2) {
 			GstRTSPMediaFactory *factory = add_stream(mapping,
-				g_slist_nth_data(list, i), g_slist_nth_data(list, i+1), shared);
+				g_slist_nth_data(list, i),
+				g_slist_nth_data(list, i+1),
+				shared, force_mcast);
 			streams = g_slist_append(streams, factory);
 		}
 		g_slist_free(list);
@@ -271,7 +282,8 @@ main (int argc, char *argv[])
 	/* parse commandline arguments */
 	i = 1;
 	while ( (argc - i) >= 2) {
-		GstRTSPMediaFactory *factory = add_stream(mapping, argv[i], argv[i+1], shared);
+		GstRTSPMediaFactory *factory = add_stream(mapping, argv[i],
+			argv[i+1], shared, force_mcast);
 		streams = g_slist_append(streams, factory);
 		i+=2;
 	}
