@@ -96,6 +96,13 @@ load_video() {
 		}
 		append GSTREAMER_ARGS "! udpsink host=$host port=$port"
 	} || {
+		# TODO:
+		#  - only use multicast-group/multicast-iface if host is mcast
+		#  - add interface as a parameter
+
+		# make sure mcast route exists or udpsrc multicast-group
+		# causes gst-launch to exit with an error
+		route add -net 224.0.0.0 netmask 240.0.0.0 br-lan
 		append GSTREAMER_ARGS "udpsrc multicast-group=$host multicast-iface=br-lan port=$port caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, profile-level-id=(string)42801e, payload=(int)96,"
 		[ "$codec" == "h264" ] && {
 			append GSTREAMER_ARGS "encoding-name=(string)H264\" !" 
@@ -118,17 +125,6 @@ load_video() {
 		}
 		append GSTREAMER_ARGS "TIDmaiVideoSink videoStd=D1_NTSC videoOutput=composite resizer=1 sync=0"
 	}
-	
-	# wait for mcast addr in network routing table (ugly-hack)
-	# perhaps would be better to wrap gst-launch in a script
-	# that handles error detection and restart
-	echo -n "Waiting for network..."
-	while [ 1 ]; do
-		route -n | grep 224.0.0.0
-		[ $? -eq 0 ] && { echo "."; break; }
-		sleep 1
-		echo -n .
-	done
 	
 	echo "gstreamer args = $GSTREAMER_ARGS"
 	start-stop-daemon -S -x $GSTREAMER_BIN \
