@@ -178,5 +178,6 @@ $(eval $(call GstBuildPlugin,video4linux2,Elements for Video4Linux2 sources,vide
 $(eval $(call GstBuildPlugin,alaw,Alaw audio coding,audio,,))
 $(eval $(call GstBuildPlugin,mulaw,Mulaw audio coding,audio,,))
 $(eval $(call GstBuildPlugin,jpeg,JPEG image coding,jpeg,,+libjpeg))
+$(eval $(call GstBuildPlugin,deinterlace,Deinterlace Methods,,,))
 
 $(eval $(call BuildPackage,gst-plugins-good))
