@@ -20,7 +20,7 @@ define Package/ti-dmai
 	CATEGORY:=Local
 	URL:=https://gforge.ti.com/gf/project/dmai/
 	TITLE:=TI DMAI
-	DEPENDS:=@TARGET_davinci +ti-xdc +ti-cg +ti-dspbios +kmod-ti-dsplink +ti-ce +ti-codecs +alsa-lib
+	DEPENDS:=@TARGET_davinci +ti-xdc +ti-cg +ti-dspbios +kmod-ti-dsplink +kmod-ti-cmem +ti-ce +ti-codecs +alsa-lib
 endef
 
 define Package/ti-dmai/description
