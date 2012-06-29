@@ -1,9 +1,9 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gst-httpd
-PKG_VERSION:=1.0
+PKG_VERSION:=1.1
 PKG_RELEASE:=1
-PKG_REV:=7296ecc55e0c0e0c5ead110e119681f4080f2612
+PKG_REV:=0e7a45a2f603774ae34b809f3fbcbab68aac8d37
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
 PKG_SOURCE_URL:=git://github.com/tharvey/gst-httpd.git
