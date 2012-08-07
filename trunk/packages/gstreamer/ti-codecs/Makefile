@@ -44,7 +44,7 @@ define Package/ti-codecs/config
 		help
 		  Select this to install the TI High Efficiency AAC C64x Decoder 
 	config TI_CODECS_MP3_DECODER
-		bool "TI MP3 C64x Decoder
+		bool "TI MP3 C64x Decoder"
 		default n
 		help
 		  Select this to install the TI MP3 C64x Decoder 
