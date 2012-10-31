@@ -1,3 +1,10 @@
+#
+# Copyright (C) 2012 OpenWrt.org
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
+
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gsc-daemon
@@ -21,7 +28,7 @@ define Package/gsc-daemon/description
 endef
 
 define Build/Prepare
-	mkdir -p $(PKG_BUILD_DIR)
+	$(INSTALL_DIR) $(PKG_BUILD_DIR)
 	$(CP) ./src/* $(PKG_BUILD_DIR)/
 endef
 

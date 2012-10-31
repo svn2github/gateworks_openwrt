@@ -1,3 +1,10 @@
+#
+# Copyright (C) 2012 OpenWrt.org
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
+
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=test-audio
@@ -11,6 +18,7 @@ define Package/test-audio
   CATEGORY:=Gateworks
   DEPENDS:=+alsa-lib
   TITLE:=Gateworks Supplied Audio Test Tools
+  MAINTAINER:=Gateworks Corporation <support@gateworks.com>
 endef
 
 define Package/test-audio/description

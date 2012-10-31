@@ -1,3 +1,10 @@
+#
+# Copyright (C) 2012 OpenWrt.org
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
+
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gsc-update
@@ -10,6 +17,7 @@ define Package/gsc-update
   SECTION:=base
   CATEGORY:=Gateworks
   TITLE:=Gateworks System Controller Firmware Update Application 
+  MAINTAINER:=Gateworks Corporation <support@gateworks.com>
 endef
 
 define Package/gsc-update/description
@@ -19,8 +27,13 @@ endef
 TARGET_CFLAGS += -D${CONFIG_TARGET_BOARD}
 
 define Build/Prepare
-	mkdir -p $(PKG_BUILD_DIR)
+	$(INSTALL_DIR) $(PKG_BUILD_DIR)
 	$(CP) ./src/* $(PKG_BUILD_DIR)/
+endef
+
+define Build/Compile
+  $(TARGET_CC) $(TARGET_CFLAGS) -Wall \
+    -o $(PKG_BUILD_DIR)/gsc_update $(PKG_BUILD_DIR)/gsc_update.c
 endef
 
 define Package/gsc-update/install

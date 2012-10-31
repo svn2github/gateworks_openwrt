@@ -1,3 +1,10 @@
+#
+# Copyright (C) 2012 OpenWrt.org
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
+
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=userled-heartbeat
@@ -11,6 +18,7 @@ define Package/userled-heartbeat
   CATEGORY:=Gateworks
   DEPENDS:=
   TITLE:=Install userled heartbeat trigger
+  MAINTAINER:=Gateworks Corporation <support@gateworks.com>
 endef
 
 define Package/userled-heartbeat/description
