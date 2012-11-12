@@ -5,6 +5,7 @@
  *
  */
 #include <stdio.h>
+#include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -32,8 +33,8 @@
 #define GSC2_WORD			0x4
 #define GSC2_PROG			0x5
 
-int parse_data_file(char *filename, unsigned char data[16][16384], short address[16], short length[16]);
-int calc_crc(unsigned char data[16][16384], short address[16], short length[16]);
+int parse_data_file(char *filename, unsigned char data[16][16384], unsigned short address[16], unsigned short length[16]);
+int calc_crc(unsigned char data[16][16384], unsigned short address[16], unsigned short length[16]);
 
 void print_banner(void)
 {
@@ -55,7 +56,7 @@ void print_help(void)
 int main(int argc, char **argv)
 {
 	unsigned long funcs;
-	unsigned char data[16][16384] = {0};
+	unsigned char data[16][16384];
 	unsigned short address[16];
 	unsigned short length[16];
 	char *prog_filename = NULL;
@@ -71,7 +72,7 @@ int main(int argc, char **argv)
 	unsigned char verbose = 0;
 	char device[16];
 
-	int i, j, k;
+	int i, j;
 	int file;
 
 	while (1) {
@@ -272,34 +273,68 @@ int main(int argc, char **argv)
 		}
 	}
 	i2c_smbus_write_byte(file, GSC2_PUC);
-	close(device);
+	close(file);
 
 	return 1;
 }
 
-#define ADDR_START 0xc000
-#define ADDR_END   0x10000
-int calc_crc(unsigned char data[16][16384], short address[16], short length[16])
+struct eeprom_layout {
+	int start;
+	int end;
+	int eeprom_start;
+	int eeprom_end;
+};
+
+struct eeprom_layout layouts[] = {
+	{
+		.start        = 0xe000,
+		.end          = 0xffff,
+		.eeprom_start = 0xfc00,
+		.eeprom_end   = 0xfdff,
+	},
+	{
+		.start        = 0xc000,
+		.end          = 0xffff,
+		.eeprom_start = 0xf800,
+		.eeprom_end   = 0xfdff,
+	},
+};
+	
+int calc_crc(unsigned char data[16][16384], unsigned short address[16], unsigned short length[16])
 {
 	const unsigned short crc_16_table[16] = {
 	  0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
  	  0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400 
 	};
-	unsigned int addr = ADDR_START;
+	unsigned int addr;
 	unsigned short crc = 0;
 	unsigned short r;
+	struct eeprom_layout *layout = NULL;
 	int i,j;
 
+printf("addr[0]=0x%04x\n", address[0]);
+	for (i = 0; i < sizeof(layouts)/sizeof(layouts[0]); i++) {
+		if (address[0] == layouts[i].start) {
+			layout = &layouts[i];
+			break;
+		}
+	}
+	if (!layout) {
+		printf("%s: unrecognized layout\n", __func__);
+		return 0;
+	}
+
+	addr = layout->start;
 	for (i = 0; i < 16; i++) {
 		if (length[i]) {
 			int segaddr = (unsigned short) address[i];
 
 			// loop over blank gap 
 			for (; addr < segaddr; addr++) {
-				if (addr >= ADDR_END)
+				if (addr >= (layout->end+1))
 					continue;
-				// skipp EEPROM flash segments
-				if (addr >= 0xf800 && addr < 0xfe00)
+				// skip EEPROM flash segments
+				if (addr >= layout->eeprom_start && addr <= layout->eeprom_end)
 					continue;
 				r = crc_16_table[crc & 0xf];
 				crc = (crc >> 4) & 0x0fff;
@@ -311,7 +346,7 @@ int calc_crc(unsigned char data[16][16384], short address[16], short length[16])
 
 			// loop over segment data
 			for (j = 0; j < length[i]; j++, addr++) {
-				if (addr >= ADDR_END)
+				if (addr >= (layout->end+1))
 					continue;
 				r = crc_16_table[crc & 0xf];
 				crc = (crc >> 4) & 0x0fff;
@@ -326,11 +361,10 @@ int calc_crc(unsigned char data[16][16384], short address[16], short length[16])
 	return crc;
 }
 
-int parse_data_file(char *filename, unsigned char data[16][16384], short address[16], short length[16])
+int parse_data_file(char *filename, unsigned char data[16][16384], unsigned short address[16], unsigned short length[16])
 {
 	FILE *fd;
 	char line[1024];
-	char temp[64];
 	short address_loc = -1;
 	char t[16][4];
 	short temp_word = 0;
@@ -339,6 +373,7 @@ int parse_data_file(char *filename, unsigned char data[16][16384], short address
 
 	memset(t, 0, sizeof(t));
 	memset(length, 0, 16*2);
+	memset(data, 0, 16*16384);
 
 	fd = fopen(filename, "r");
 	if (!fd)
