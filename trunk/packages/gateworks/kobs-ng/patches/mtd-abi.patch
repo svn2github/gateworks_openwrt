@@ -1,0 +1,73 @@
+--- a/src/mtd.c
++++ b/src/mtd.c
+@@ -33,6 +33,7 @@
+ #include <errno.h>
+ #include <sys/types.h>
+ #include <sys/ioctl.h>
++#include <mtd/mtd-abi.h>
+ 
+ #include "mtd.h"
+ 
+@@ -693,7 +694,7 @@ struct mtd_data *mtd_open(const struct m
+ 
+ 		miu = &mp->info;
+ 
+-		r = ioctl(mp->fd, MTDFILEMODE, (void *)MTD_MODE_NORMAL);
++		r = ioctl(mp->fd, MTDFILEMODE, (void *)MTD_FILE_MODE_NORMAL);
+ 		if (r != 0 && r != -ENOTTY) {
+ 			fprintf(stderr, "mtd: device %s can't switch to normal: %d\n",
+ 					mp->name, r);
+@@ -851,11 +852,13 @@ void mtd_close(struct mtd_data *md)
+ 
+ 		mp = &md->part[i];
+ 
++#if 0
+ 		if (mp->fd != -1) {
+ 			(void)ioctl(mp->fd, MEMSETOOBSEL,
+ 					&mp->old_oobinfo);
+ 			close(mp->fd);
+ 		}
++#endif
+ 
+ 		if (mp->bad_blocks)
+ 			free(mp->bad_blocks);
+@@ -890,12 +893,13 @@ int mtd_set_ecc_mode(struct mtd_data *md
+ 			continue;
+ 
+ 		if (ecc == 1) {
+-			r = ioctl(mp->fd, MTDFILEMODE, (void *)MTD_MODE_NORMAL);
++			r = ioctl(mp->fd, MTDFILEMODE, (void *)MTD_FILE_MODE_NORMAL);
+ 			if (r != 0 && r != -ENOTTY) {
+ 				fprintf(stderr, "mtd: device %s can't switch to normal\n", mp->name);
+ 				continue;
+ 			}
+ 
++#if 0
+ 			if (r == -ENOTTY) {
+ 				r = ioctl(mp->fd, MEMSETOOBSEL, &mp->old_oobinfo);
+ 				if (r != 0) {
+@@ -904,13 +908,15 @@ int mtd_set_ecc_mode(struct mtd_data *md
+ 				}
+ 				mp->oobinfochanged = 0;
+ 			}
++#endif
+ 		} else {
+-			r = ioctl(mp->fd, MTDFILEMODE, (void *)MTD_MODE_RAW);
++			r = ioctl(mp->fd, MTDFILEMODE, (void *)MTD_FILE_MODE_RAW);
+ 			if (r != 0 && r != -ENOTTY) {
+ 				fprintf(stderr, "mtd: device %s can't switch to RAW\n", mp->name);
+ 				continue;
+ 			}
+ 
++#if 0
+ 			if (r == -ENOTTY) {
+ 				r = ioctl(mp->fd, MEMSETOOBSEL, &none_oobinfo);
+ 				if (r != 0) {
+@@ -920,6 +926,7 @@ int mtd_set_ecc_mode(struct mtd_data *md
+ 				mp->oobinfochanged = 1;
+ 			} else
+ 				mp->oobinfochanged = 2;
++#endif
+ 		}
+ 
+ 		mp->ecc = ecc;
