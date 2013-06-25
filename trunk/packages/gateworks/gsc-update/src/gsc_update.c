@@ -17,7 +17,7 @@
 #include "i2c.h"
 #include "i2c_upgrader.h"
 
-#define GSC_UPDATER_REV 5
+#define GSC_UPDATER_REV 6
 
 #define GSC_DEVICE		0x20
 #define GSC_UPDATER		0x21
@@ -50,6 +50,8 @@ void print_help(void)
 	printf("\t-f,--flash <filename>   Program flash device using [filename]\n");
 	printf("\t-c,--crc <filename>     Show CRC of [filename] without programming flash\n");
 	printf("\t-v,--verbose            Increase Verbosity\n");
+	printf("\t-q,--quiet              do not display progress\n");
+	printf("\t-v,--verbose            Increase Verbosity\n");
 	printf("\n");
 }
 
@@ -70,6 +72,7 @@ int main(int argc, char **argv)
 	unsigned char calc_crc_only = 0;
 	unsigned short crc;
 	unsigned char verbose = 0;
+	unsigned char quiet = 0;
 	char device[16];
 
 	int i, j;
@@ -82,10 +85,11 @@ int main(int argc, char **argv)
 			{"flash", 1, 0, 'f'},
 			{"crc", 1, 0, 'c'},
 			{"verbose", 0, 0, 'v'},
+			{"quiet", 0, 0, 'q'},
 			{0, 0, 0, 0}
 		};
 
-		c = getopt_long(argc, argv, "f:c:vh?", long_options, &optind);
+		c = getopt_long(argc, argv, "f:c:vqh?", long_options, &optind);
 		if (c == -1)
 			break;
 
@@ -96,6 +100,9 @@ int main(int argc, char **argv)
 			case 'c':
 				prog_filename = optarg;
 				calc_crc_only = 1;
+				break;
+			case 'q':
+				quiet++;
 				break;
 			case 'v':
 				verbose++;
@@ -209,12 +216,12 @@ int main(int argc, char **argv)
 						break;
 					fflush(stdout);
 				}
-				if (!i) {
+				if (!i && !quiet) {
 					printf("Program Upgrader  %2i%%\r", (int)((((double)j / 2) / i2c_upgrader_length[i]) * 100));
 					fflush(stdout);
 				}
 			}
-			if (!i) {
+			if (!i && !quiet) {
 				printf("Program Upgrader  %i%%\n", 100);
 				fflush(stdout);
 			}
@@ -265,14 +272,33 @@ int main(int argc, char **argv)
 						break;
 					fflush(stdout);
 				}
-				printf("MSP Prg B%i   %2i%%\r", i, (int)((((double)j / 2) / length[i]) * 100));
+				if (!quiet) {
+					printf("MSP Prg B%i   %2i%%\r", i, (int)((((double)j / 2) / length[i]) * 100));
+					fflush(stdout);
+				}
+			}
+			if (!quiet) {
+				printf("MSP Prg B%i  %i%%\n", i, 100);
 				fflush(stdout);
 			}
-			printf("MSP Prg B%i  %i%%\n", i, 100);
-			fflush(stdout);
 		}
 	}
 	i2c_smbus_write_byte(file, GSC2_PUC);
+
+	/* disable boot watchdog */
+	sleep(1);
+	if (ioctl(file, I2C_SLAVE, GSC_DEVICE) < 0) {
+		perror("couldn't set GSC address");
+		exit(1);
+	}
+	i2c_smbus_write_byte(file, 1);
+	ret = i2c_smbus_read_byte_data(file, 1);
+	printf("R1:0x%02x\n", ret);
+	if (ret & 1<<5) {
+		printf("stopping boot watchdog timer\n");
+		i2c_smbus_write_byte_data(file, 1, 1<<7);
+	}
+
 	close(file);
 
 	return 1;
