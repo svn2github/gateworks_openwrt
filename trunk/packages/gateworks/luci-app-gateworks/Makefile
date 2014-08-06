@@ -16,7 +16,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/luci-app-gateworks
   SECTION:=base
   CATEGORY:=Gateworks
-  DEPENDS:=+luci luci-mod-admin-core luci-mod-admin-full 
+  DEPENDS:=+luci
   TITLE:=Luci support for Gateworks boards
   MAINTAINER:=Gateworks Corporation <support@gateworks.com>
 endef
