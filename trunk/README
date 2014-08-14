@@ -1,0 +1,36 @@
+Instructions for building the OpenWrt based BSP with Gateworks Patches
+
+---------------
+Pre-requisites:
+---------------
+  - OpenWrt buildroot prerequisites listed at
+    http://wiki.openwrt.org/doc/howto/buildroot.exigence
+
+----------------
+Simple Procedure
+----------------
+
+A makefile is provided in this directory to simplify the process of fetching,
+patching, and preparing the OpenWrt tree to be built for the Gateworks
+products.  The following make targets exist:
+
+trunk    : fetch, patch, and prepare the version of the OpenWrt trunk this
+           patchset has been tested with
+all      : build BSP for all supported Gateworks product families
+cns3xxx  : build BSP for the cns3xxx target (Laguna product family)
+ixp4xx   : build BSP for the cns3xxx target (Avila/Cambria product family)
+images   : build binary flash images (suitable for JTAG flashing) for
+           supported product families (Laguna).
+dirclean : remove all downloaded and built directories
+
+For example, if you wish to build the BSP for a GW2380 (in the Laguna family):
+  make cns3xxx  ;# build kernel/rootfs
+  make images   ;# fetch latest bootloader and create a flash image for JTAG
+
+The resulting kernel/rootfs will be in the trunk/bin/cns3xxx directory and
+the resulting flash firmware image will be images/gw2380.bin.
+
+For more information see:
+  - http://trac.gateworks.com/wiki/build_openwrt
+  - http://trac.gateworks.com/ and follow on to the product page for your board
+    for more info on updating firmware.

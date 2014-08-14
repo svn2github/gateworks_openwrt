@@ -1,0 +1,107 @@
+#!/bin/sh
+
+#
+# Manage Gateworks OpenWRT patchset
+#
+# usage: makepatch [dir] [patchdir]
+# usage: [--revert] [dir]
+#
+# dir      - the directory to generate patches from (based on svn)
+# patchdir - the directory to store resulting patches in
+#
+# PATHSETS contains a list of patchname:path to generate unique patchsets
+# for.  If path is omitted path will be same as patchname.
+#
+
+ACTION=create
+[ "$1" = "--revert" ] && { ACTION=revert; shift; }
+
+DIR=${1:-trunk}
+PATCHDIR=${2:-patches}
+PATCHSETS=" \
+	target-cns3xxx:target/linux/cns3xxx \
+	target-davinci:target/linux/davinci \
+	target-ixp4xx:target/linux/ixp4xx \
+	target-generic:target/linux/generic \
+	\
+	feeds:feeds.conf.default \
+	docs \
+	include \
+	package \
+	scripts \
+	toolchain \
+	tools \
+"
+
+# $1 - path
+# use sort on files to maintain file order across various configurations
+do_diff() {
+	svn status $1/ | awk '{print $2}' | sort | \
+		xargs svn diff --depth=empty 2>/dev/null
+}
+
+# create patch
+# globals: DIR, PATCHDIR, PATCHSETS 
+create() {
+	local name path d i 
+
+	echo "Creating patchset for $DIR:"
+
+	echo "Adding new files..."
+	svn add --force $DIR/$d
+	for d in $PATCHSETS; do
+		name="${d%%:*}"; d="${d#*:}"
+		path="${d%%:*}"; d="${d#*:}"
+		svn add --force $DIR/$path
+	done
+	echo "Creating patch..."
+	for d in $PATCHSETS; do
+		name="${d%%:*}"; d="${d#*:}"
+		path="${d%%:*}"; d="${d#*:}"
+		do_diff $DIR/$path > $PATCHDIR/$name.patch
+		if [ -s $PATCHDIR/$name.patch ]; then
+			svn add $PATCHDIR/$name.patch 2>/dev/null
+			wc=$(svn diff $PATCHDIR/$name.patch | wc | \
+				awk '{ print $1 }')
+			if [ $wc -ne 0 ]; then
+				echo "	updated $name.patch"		
+			#else
+			#	echo "$name.patch unchanged"
+			fi
+		else
+			rm $PATCHDIR/$name.patch
+		fi
+	done
+
+	# make sure we have not missed any files in our patchset
+	for i in $(svn status $DIR | cut -c9- | sort); do
+		[ -d $i ] || echo $i
+	done > $DIR/tmp/altered_files
+	grep "^+++ " $PATCHDIR/* | awk '{ print $2 }' | sort \
+		> $DIR/tmp/patched_files
+	diffs=$(diff $DIR/tmp/altered_files $DIR/tmp/patched_files)
+	[ "$diffs" ] && {
+		echo "Warning: altered files in $DIR differ from those in patchset:"
+		echo "$diffs"
+	}
+}
+
+# revert all changes
+# globals: DIR
+revert() {
+	echo "Reverting patches in $DIR..."
+
+	# remove added files
+	svn status $DIR | grep ^? | awk '{print $2}' | xargs rm -rf
+	# revert deleted/modified files
+	svn revert --depth=infinity $DIR
+}
+
+case $ACTION in
+	create) create $@;;
+	revert) revert $@;;
+	*)
+		echo "usage: $0 [--revert [openwrtdir]]|[[openwrtdir] [patchdir]]"
+		exit 1
+		;;
+esac

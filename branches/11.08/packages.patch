@@ -1,0 +1,2398 @@
+Index: trunk/package/ixp4xx-microcode/src/IxNpeMicrocode.h
+===================================================================
+--- trunk/package/ixp4xx-microcode/src/IxNpeMicrocode.h	(revision 27590)
++++ trunk/package/ixp4xx-microcode/src/IxNpeMicrocode.h	(working copy)
+@@ -27,7 +27,7 @@
+ #define IX_NPEDL_NPEIMAGE_NPEA_ETH_SPAN_FIREWALL_VLAN_QOS_HDR_CONV
+ // #define IX_NPEDL_NPEIMAGE_NPEA_ETH_LEARN_FILTER_SPAN_FIREWALL_VLAN_QOS
+ // #define IX_NPEDL_NPEIMAGE_NPEA_ETH_LEARN_FILTER_SPAN_FIREWALL
+-// #define IX_NPEDL_NPEIMAGE_NPEA_HSS_2_PORT
++#define IX_NPEDL_NPEIMAGE_NPEA_HSS_2_PORT
+ // #define IX_NPEDL_NPEIMAGE_NPEA_DMA
+ // #define IX_NPEDL_NPEIMAGE_NPEA_ATM_MPHY_12_PORT
+ // #define IX_NPEDL_NPEIMAGE_NPEA_HSS0_ATM_MPHY_1_PORT
+@@ -118,7 +118,11 @@
+ 
+ 		sprintf(filename, "NPE-%c.%08x", (field[0] & 0xf) + 'A',
+ 			image->id);
+-		sprintf(slnk, "NPE-%c", (field[0] & 0xf) + 'A');
++		if (image->id == 0x00090000)
++			sprintf(slnk, "NPE-%c-HSS", (field[0] & 0xf) + 'A');
++		else
++			sprintf(slnk, "NPE-%c", (field[0] & 0xf) + 'A');
++
+ 		printf("Writing image: %s.NPE_%c Func: %2x Rev: %02x.%02x "
+ 			"Size: %5d to: '%s'\n",
+ 			names[field[0] >> 4], (field[0] & 0xf) + 'A',
+Index: trunk/package/ixp4xx-microcode/Makefile
+===================================================================
+--- trunk/package/ixp4xx-microcode/Makefile	(revision 27590)
++++ trunk/package/ixp4xx-microcode/Makefile	(working copy)
+@@ -48,6 +48,7 @@
+ 	$(INSTALL_DIR) $(1)/lib/firmware
+ 	$(INSTALL_DIR) $(1)/usr/share/doc
+ 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/NPE-A $(1)/lib/firmware/
++	$(INSTALL_BIN) $(PKG_BUILD_DIR)/NPE-A-HSS $(1)/lib/firmware/
+ 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/NPE-B $(1)/lib/firmware/
+ 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/NPE-C $(1)/lib/firmware/
+ 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/LICENSE.IPL $(1)/usr/share/doc/
+Index: trunk/package/kernel/modules/sound.mk
+===================================================================
+--- trunk/package/kernel/modules/sound.mk	(revision 27590)
++++ trunk/package/kernel/modules/sound.mk	(working copy)
+@@ -194,3 +194,22 @@
+ endef
+ 
+ $(eval $(call KernelPackage,sound-soc-n810))
++
++
++define KernelPackage/sound-soc-gw_avila
++  TITLE:=Gateworks Avila SoC sound support
++  KCONFIG:= \
++	CONFIG_SND_GW_AVILA_SOC \
++	CONFIG_SND_GW_AVILA_SOC_PCM \
++	CONFIG_SND_GW_AVILA_SOC_HSS
++  FILES:= \
++	$(LINUX_DIR)/sound/soc/codecs/snd-soc-tlv320aic3x.ko \
++	$(LINUX_DIR)/sound/soc/gw-avila/snd-soc-gw-avila.ko \
++	$(LINUX_DIR)/sound/soc/gw-avila/snd-soc-gw-avila-pcm.ko \
++	$(LINUX_DIR)/sound/soc/gw-avila/snd-soc-gw-avila-hss.ko
++  AUTOLOAD:=$(call AutoLoad,65,snd-soc-tlv320aic3x snd-soc-gw-avila snd-soc-gw-avila-pcm snd-soc-gw-avila-hss)
++  DEPENDS:=@TARGET_ixp4xx +kmod-sound-soc-core
++  $(call AddDepends/sound)
++endef
++
++$(eval $(call KernelPackage,sound-soc-gw_avila))
+Index: trunk/package/mac80211/patches/022-atomic64_backport.patch
+===================================================================
+--- trunk/package/mac80211/patches/022-atomic64_backport.patch	(revision 27590)
++++ trunk/package/mac80211/patches/022-atomic64_backport.patch	(working copy)
+@@ -5,7 +5,7 @@
+  	kstrtox.o
+  
+ +ifndef CONFIG_64BIT
+-+ifndef CONFIG_GENERIC_ATOMIC64
+++ifdef CONFIG_GENERIC_ATOMIC64
+ +  compat-y += compat_atomic.o
+ +endif
+ +endif
+@@ -15,7 +15,7 @@
+  #define list_entry_rcu(ptr, type, member) \
+  	container_of(rcu_dereference(ptr), type, member)
+  
+-+#ifndef CONFIG_64BIT
+++#ifdef CONFIG_GENERIC_ATOMIC64
+ +
+ +typedef struct {
+ +	long long counter;
+Index: trunk/package/gateworks/files/usr/lib/lua/luci/model/cbi/serialoverip/serialoverip.lua
+===================================================================
+--- trunk/package/gateworks/files/usr/lib/lua/luci/model/cbi/serialoverip/serialoverip.lua	(revision 0)
++++ trunk/package/gateworks/files/usr/lib/lua/luci/model/cbi/serialoverip/serialoverip.lua	(revision 0)
+@@ -0,0 +1,114 @@
++--[[
++LuCI - Lua Configuration Interface
++
++Copyright 2008 Steven Barth <steven@midlink.org>
++Copyright 2008 Jo-Philipp Wich <xm@leipzig.freifunk.net>
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++	http://www.apache.org/licenses/LICENSE-2.0
++
++$Id: serialoverip.lua 5941 2010-03-27 02:41:29Z jow $
++]]--
++m = Map("serialoverip", "Serial Over IP", "Setup Serial Over IP Configuration, reboot to apply")
++
++s = m:section(TypedSection, "serial", "General")
++s.anonymous = true
++s.addremove = true
++
++p1 = s:option(ListValue, "type", "Serial Over IP / Serial to Network")
++p1:value("serialoverip", "serialoverip")
++p1:value("ser2net", "ser2net")
++p1.default = "serialoverip"
++
++p2 = s:option(ListValue, "mode", "Server/Client")
++p2:value("server", "Server")
++p2:value("client", "Client")
++p2:depends("type","serialoverip")
++p2.default = "server"
++
++q3 = s:option(Value, "ip", "Host IP", "The address to send/receive on.")
++q3:depends("type","serialoverip")
++
++q4 = s:option(Value, "ipser", "IP Address", "Leave blank to bind to all the ports on the machine.") 
++q4:depends("type","ser2net")
++
++s:option(Value, "port", "Port", "The port to send/receive on")
++
++p4 = s:option(ListValue, "baud", "Baud Rate")
++p4:value("50", "50")
++p4:value("110", "110")
++p4:value("300","300")
++p4:value("1200", "1200")
++p4:value("2400", "2400")
++p4:value("4800", "4800")
++p4:value("9600", "9600")
++p4:value("19200", "19200")
++p4:value("38400", "38400")
++p4:value("57600", "57600")
++p4:value("115200", "115200")
++p4:value("230400", "230400")
++
++
++p5 = s:option(ListValue, "device", "Device", "The serial port device")
++p5:value("ttyS1", "ttyS1")
++p5:value("ttyS2", "ttyS2")
++p5:value("ttyS3", "ttyS3")
++p5:value("ttyS4", "ttyS4")
++p5:value("ttyS5", "ttyS5")
++p5:value("ttyS6", "ttyS6")
++p5:value("ttyS7", "ttyS7")
++p5:value("ttyS8", "ttyS8")
++p5:value("ttyS9", "ttyS9")
++p5:value("ttyS10", "ttyS10")
++p5:value("ttyS11", "ttyS11")
++p5:value("ttyS12", "ttyS12")
++p5:value("ttyS13", "ttyS13")
++p5:value("ttyS14", "ttyS14")
++p5:value("ttyS15", "ttyS15")
++p5:value("ttyS16", "ttyS16")
++p5:value("ttyS17", "ttyS17")
++p5:value("tty$18", "ttyS18")
++p5:value("ttyS19", "ttyS19")
++p5:value("ttyS20", "ttyS20")
++p5.default = "ttyS1"
++
++p6 = s:option(ListValue, "data", "Data Bits")
++p6:value("5", "5")
++p6:value("6", "6")
++p6:value("7", "7")
++p6:value("8", "8")
++p6.default = "8"
++
++p7 = s:option(ListValue, "parity", "Parity Type")
++p7:value("N", "N")
++p7:value("E", "E")
++p7:value("O", "O")
++p7.default = "N"
++
++p8 = s:option(ListValue, "stop", "Stop Bits")
++p8:value("1", "1")
++p8:value("2", "2")
++p8.default = "1"
++
++p9 = s:option(ListValue, "state", "State")
++p9:value("raw","raw")
++p9:value("rawlp","rawlp")
++p9:value("telnet","telnet")
++p9:value("off","off")
++p9:depends("type","ser2net")
++p9.default = "raw"
++
++q1 = s:option(Value, "timeout", "Time Out", "Time before port will be disconnected if there is no activity (0 disables this function)")
++q1:depends("type","ser2net")
++q1.default = "0"
++
++q2 = s:option(ListValue, "remctl", "Remote Control")
++q2:value("ON","ON")
++q2:value("OFF","OFF")
++q2:depends("type","ser2net")
++q2.default = "OFF"
++
++return m
+Index: trunk/package/gateworks/files/usr/lib/lua/luci/controller/serialoverip.lua
+===================================================================
+--- trunk/package/gateworks/files/usr/lib/lua/luci/controller/serialoverip.lua	(revision 0)
++++ trunk/package/gateworks/files/usr/lib/lua/luci/controller/serialoverip.lua	(revision 0)
+@@ -0,0 +1,20 @@
++--[[
++LuCI - Lua Configuration Interface
++
++Copyright 2008 Steven Barth <steven@midlink.org>
++Copyright 2008 Jo-Philipp Wich <xm@leipzig.freifunk.net>
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++	http://www.apache.org/licenses/LICENSE-2.0
++
++$Id: serialoverip.lua 5118 2009-07-23 03:32:30Z jow $
++]]--
++module("luci.controller.serialoverip", package.seeall)
++
++function index()
++	local page = entry({"admin", "services", "serialoverip"}, cbi("serialoverip/serialoverip"), "Serial Over IP", 99)
++	page.dependent = false
++end
+Index: trunk/package/gateworks/files/usr/lib/lua/luci/view/admin_status/index.htm
+===================================================================
+--- trunk/package/gateworks/files/usr/lib/lua/luci/view/admin_status/index.htm	(revision 0)
++++ trunk/package/gateworks/files/usr/lib/lua/luci/view/admin_status/index.htm	(revision 0)
+@@ -0,0 +1,697 @@
++<%#
++LuCI - Lua Configuration Interface
++Copyright 2008 Steven Barth <steven@midlink.org>
++Copyright 2008-2011 Jo-Philipp Wich <xm@subsignal.org>
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++	http://www.apache.org/licenses/LICENSE-2.0
++
++$Id: index.htm 7022 2011-05-04 21:04:31Z jow $
++
++-%>
++
++<%
++	require "luci.fs"
++	require "luci.tools.status"
++
++	local has_ipv6 = luci.fs.access("/proc/net/ipv6_route")
++	local has_dhcp = luci.fs.access("/etc/config/dhcp")
++	local has_wifi = luci.fs.stat("/etc/config/wireless")
++	      has_wifi = has_wifi and has_wifi.size > 0
++
++	local has_gsp = true
++	local gsp_temp
++	local input_v = {}
++	local input_v_name = {}
++
++	gsp_temp = tonumber(luci.sys.exec("cat /sys/class/hwmon/hwmon0/device/in0_input"))
++	if gsp_temp == -6 then
++		has_gsp = false
++	end
++
++	if has_gsp then
++		for i=0, 12 do                                                            
++			input_v[i] = tonumber((                                     
++				luci.sys.exec("cat /sys/class/hwmon/hwmon0/device/in" .. i .. "_input") or ""))
++			input_v_name[i] =                                                      
++				luci.sys.exec("cat /sys/class/hwmon/hwmon0/device/in" .. i .. "_label")
++		end
++	end
++		
++	if luci.http.formvalue("status") == "1" then
++		local ntm = require "luci.model.network".init()
++		local dr4 = luci.sys.net.defaultroute()
++		local dr6 = luci.sys.net.defaultroute6()
++		local wan, wan6
++
++		if dr4 and dr4.device then
++			wan = ntm:get_interface(dr4.device)
++			wan = wan and wan:get_network()
++		end
++
++		if dr6 and dr6.device then
++			wan6 = ntm:get_interface(dr6.device)
++			wan6 = wan6 and wan6:get_network()
++		end
++
++		local _, _, memtotal, memcached, membuffers, memfree = luci.sys.sysinfo()
++		local current_temp, current_vin
++		local conn_count = tonumber((
++			luci.sys.exec("wc -l /proc/net/nf_conntrack") or
++			luci.sys.exec("wc -l /proc/net/ip_conntrack") or
++			""):match("%d+")) or 0
++
++		local conn_max = tonumber((
++			luci.sys.exec("sysctl net.nf_conntrack_max") or
++			luci.sys.exec("sysctl net.ipv4.netfilter.ip_conntrack_max") or
++			""):match("%d+")) or 4096
++
++		if has_gsp then
++			current_temp = tonumber((
++				luci.sys.exec("cat /sys/class/hwmon/hwmon0/device/temp0_input") or
++				""))
++			current_vin = tonumber((
++				luci.sys.exec("cat /sys/class/hwmon/hwmon0/device/in0_input") or
++				""))
++			for i=0, 12 do                                                            
++				input_v[i] = tonumber((                                     
++					luci.sys.exec("cat /sys/class/hwmon/hwmon0/device/in" .. i .. "_input") or ""))
++				input_v_name[i] =                                                      
++					luci.sys.exec("cat /sys/class/hwmon/hwmon0/device/in" .. i .. "_label")        
++			end                                     
++		else
++			current_temp = tonumber((
++				luci.sys.exec("cat /sys/class/hwmon/hwmon1/device/temp1_input") or
++				"")) / 100
++			current_vin = tonumber((
++				luci.sys.exec("cat /sys/class/hwmon/hwmon1/device/in1_input") or
++				"")) * 22.1
++		end
++
++		local rv = {
++			uptime     = luci.sys.uptime(),
++			localtime  = os.date(),
++			loadavg    = { luci.sys.loadavg() },
++			memtotal   = memtotal,
++			memcached  = memcached,
++			membuffers = membuffers,
++			memfree    = memfree,
++			connmax    = conn_max,
++			conncount  = conn_count,
++			leases     = luci.tools.status.dhcp_leases(),
++			wifinets   = luci.tools.status.wifi_networks(),
++			temp       = current_temp,
++			vin        = current_vin,
++			input_volt = input_v,
++			input_name = input_v_name
++		}
++
++		if wan then
++			rv.wan = {
++				ipaddr  = wan:ipaddr(),
++				gwaddr  = wan:gwaddr(),
++				netmask = wan:netmask(),
++				dns     = wan:dnsaddrs(),
++				expires = wan:expires(),
++				uptime  = wan:uptime(),
++				proto   = wan:proto(),
++				ifname  = wan:ifname(),
++				link    = wan:adminlink()
++			}
++		end
++
++		if wan6 then
++			rv.wan6 = {
++				ip6addr = wan6:ip6addr(),
++				gw6addr = wan6:gw6addr(),
++				dns     = wan6:dns6addrs(),
++				uptime  = wan6:uptime(),
++				ifname  = wan6:ifname(),
++				link    = wan6:adminlink()
++			}
++		end
++
++		luci.http.prepare_content("application/json")
++		luci.http.write_json(rv)
++
++		return
++	end
++
++	local system, model = luci.sys.sysinfo()
++-%>
++
++<%+header%>
++
++<script type="text/javascript" src="<%=resource%>/cbi.js"></script>
++<script type="text/javascript">//<![CDATA[
++	function progressbar(v, m)
++	{
++		var vn = parseInt(v) || 0;
++		var mn = parseInt(m) || 100;
++		var pc = Math.floor((100 / mn) * vn);
++
++		return String.format(
++			'<div style="width:200px; position:relative; border:1px solid #999999">' +
++				'<div style="background-color:#CCCCCC; width:%d%%; height:15px">' +
++					'<div style="position:absolute; left:0; top:0; text-align:center; width:100%%; color:#000000">' +
++						'<small>%s / %s (%d%%)</small>' +
++					'</div>' +
++				'</div>' +
++			'</div>', pc, v, m, pc
++		);
++	}
++
++	var iwxhr = new XHR();
++	var wifidevs = <%=luci.http.write_json(netdevs)%>;
++	var arptable = <%=luci.http.write_json(arpcache)%>;
++
++	var update_status = function() {
++		iwxhr.get('<%=REQUEST_URI%>', { status: 1 },
++			function(x, info)
++			{
++				var si = document.getElementById('wan4_i');
++				var ss = document.getElementById('wan4_s');
++				var ifc = info.wan;
++
++				if (ifc && ifc.ifname && ifc.proto != 'none')
++				{
++					var s = String.format(
++						'<strong><%:Type%>: </strong>%s<br />' +
++						'<strong><%:Address%>: </strong>%s<br />' +
++						'<strong><%:Netmask%>: </strong>%s<br />' +
++						'<strong><%:Gateway%>: </strong>%s<br />',
++							ifc.proto,
++							(ifc.ipaddr) ? ifc.ipaddr : '0.0.0.0',
++							(ifc.netmask != ifc.ipaddr) ? ifc.netmask : '255.255.255.255',
++							(ifc.gwaddr) ? ifc.gwaddr : '0.0.0.0'
++					);
++
++					for (var i = 0; i < ifc.dns.length; i++)
++					{
++						s += String.format(
++							'<strong><%:DNS%> %d: </strong>%s<br />',
++							i + 1, ifc.dns[i]
++						);
++					}
++
++					if (ifc.expires > -1)
++					{
++						s += String.format(
++							'<strong><%:Expires%>: </strong>%t<br />',
++							ifc.expires
++						);
++					}
++
++					if (ifc.uptime > 0)
++					{
++						s += String.format(
++							'<strong><%:Connected%>: </strong>%t<br />',
++							ifc.uptime
++						);
++					}
++
++					ss.innerHTML = String.format('<small>%s</small>', s);
++					si.innerHTML = String.format(
++						'<img src="<%=resource%>/icons/ethernet.png" />' +
++						'<br /><small><a href="%s">%s</a></small>',
++							ifc.link, ifc.ifname
++					);
++				}
++				else
++				{
++					si.innerHTML = '<img src="<%=resource%>/icons/ethernet_disabled.png" /><br /><small>?</small>';
++					ss.innerHTML = '<em>Not connected</em>';
++				}
++
++				<% if has_ipv6 then %>
++				var si6 = document.getElementById('wan6_i');
++				var ss6 = document.getElementById('wan6_s');
++				var ifc6 = info.wan6;
++
++				if (ifc6 && ifc6.ifname && ifc6.proto != 'none')
++				{
++					var s = String.format(
++						'<strong><%:Address%>: </strong>%s<br />' +
++						'<strong><%:Gateway%>: </strong>%s<br />',
++							(ifc6.ip6addr) ? ifc6.ip6addr : '::',
++							(ifc6.gw6addr) ? ifc6.gw6addr : '::'
++					);
++
++					for (var i = 0; i < ifc6.dns.length; i++)
++					{
++						s += String.format(
++							'<strong><%:DNS%> %d: </strong>%s<br />',
++							i + 1, ifc6.dns[i]
++						);
++					}
++
++					if (ifc6.uptime > 0)
++					{
++						s += String.format(
++							'<strong><%:Connected%>: </strong>%t<br />',
++							ifc6.uptime
++						);
++					}
++
++					ss6.innerHTML = String.format('<small>%s</small>', s);
++					si6.innerHTML = String.format(
++						'<img src="<%=resource%>/icons/ethernet.png" />' +
++						'<br /><small><a href="%s">%s</a></small>',
++							ifc6.link, ifc6.ifname
++					);
++				}
++				else
++				{
++					si6.innerHTML = '<img src="<%=resource%>/icons/ethernet_disabled.png" /><br /><small>?</small>';
++					ss6.innerHTML = '<em>Not connected</em>';
++				}
++				<% end %>
++
++				<% if has_dhcp then %>
++				var ls = document.getElementById('lease_status_table');
++				if (ls)
++				{
++					/* clear all rows */
++					while( ls.rows.length > 1 )
++						ls.rows[0].parentNode.deleteRow(1);
++
++					for( var i = 0; i < info.leases.length; i++ )
++					{
++						var timestr;
++
++						if (info.leases[i].expires <= 0)
++							timestr = '<em><%:expired%></em>';
++						else
++							timestr = String.format('%t', info.leases[i].expires);
++
++						var tr = ls.rows[0].parentNode.insertRow(-1);
++							tr.className = 'cbi-section-table-row cbi-rowstyle-' + ((i % 2) + 1);
++
++						tr.insertCell(-1).innerHTML = info.leases[i].hostname ? info.leases[i].hostname : '?';
++						tr.insertCell(-1).innerHTML = info.leases[i].ipaddr;
++						tr.insertCell(-1).innerHTML = info.leases[i].macaddr;
++						tr.insertCell(-1).innerHTML = timestr;
++					}
++
++					if( ls.rows.length == 1 )
++					{
++						var tr = ls.rows[0].parentNode.insertRow(-1);
++							tr.className = 'cbi-section-table-row';
++
++						var td = tr.insertCell(-1);
++							td.colSpan = 4;
++							td.innerHTML = '<em><br /><%:There are no active leases.%></em>';
++					}
++				}
++				<% end %>
++
++				<% if has_wifi then %>
++				var assoclist = [ ];
++
++				var ws = document.getElementById('wifi_status_table');
++				if (ws)
++				{
++					var wsbody = ws.rows[0].parentNode;
++					while (ws.rows.length > 0)
++						wsbody.deleteRow(0);
++
++					for (var didx = 0; didx < info.wifinets.length; didx++)
++					{
++						var dev = info.wifinets[didx];
++
++						var tr = wsbody.insertRow(-1);
++						var td;
++
++						td = tr.insertCell(-1);
++						td.width     = "33%";
++						td.innerHTML = dev.name;
++						td.style.verticalAlign = "top";
++
++						td = tr.insertCell(-1);
++
++						var s = '';
++
++						for (var nidx = 0; nidx < dev.networks.length; nidx++)
++						{
++							var net = dev.networks[nidx];
++							var is_assoc = (net.bssid != '00:00:00:00:00:00' && net.channel);
++
++							var icon;
++							if (!is_assoc)
++								icon = "<%=resource%>/icons/signal-none.png";
++							else if (net.quality == 0)
++								icon = "<%=resource%>/icons/signal-0.png";
++							else if (net.quality < 25)
++								icon = "<%=resource%>/icons/signal-0-25.png";
++							else if (net.quality < 50)
++								icon = "<%=resource%>/icons/signal-25-50.png";
++							else if (net.quality < 75)
++								icon = "<%=resource%>/icons/signal-50-75.png";
++							else
++								icon = "<%=resource%>/icons/signal-75-100.png";
++
++							s += String.format(
++								'<table><tr><td style="text-align:center; width:32px; padding:3px">' +
++									'<img src="%s" title="<%:Signal%>: %d dBm / <%:Noise%>: %d dBm" />' +
++									'<br /><small>%d%%</small>' +
++								'</td><td style="text-align:left; padding:3px"><small>' +
++									'<strong><%:SSID%>:</strong> <a href="%s">%h</a><br />' +
++									'<strong><%:Mode%>:</strong> %s<br />' +
++									'<strong><%:Channel%>:</strong> %d (%.2f GHz)<br />' +
++									'<strong><%:Bitrate%>:</strong> %s Mb/s<br />',
++									icon, net.signal, net.noise,
++									net.quality,
++									net.link, net.ssid,
++									net.mode,
++									net.channel, net.frequency,
++									net.bitrate || '?'
++							);
++
++							if (is_assoc)
++							{
++								s += String.format(
++									'<strong><%:BSSID%>:</strong> %s<br />' +
++									'<strong><%:Encryption%>:</strong> %s',
++										net.bssid,
++										net.encryption
++								);
++							}
++							else
++							{
++								s += '<em><%:Wireless is disabled or not associated%></em>';
++							}
++
++							s += '</small></td></tr></table>';
++
++							for (var bssid in net.assoclist)
++							{
++								assoclist.push({
++									bssid:  bssid,
++									signal: net.assoclist[bssid].signal,
++									noise:  net.assoclist[bssid].noise,
++									link:   net.link,
++									name:   net.name
++								});
++							}
++						}
++
++						if (!s)
++							s = '<em><%:No information available%></em>';
++
++						td.innerHTML = s;
++					}
++				}
++
++				var ac = document.getElementById('wifi_assoc_table');
++				if (ac)
++				{
++					/* clear all rows */
++					while( ac.rows.length > 1 )
++						ac.rows[0].parentNode.deleteRow(1);
++
++					assoclist.sort(function(a, b) {
++						return (a.name == b.name)
++							? (a.bssid < b.bssid)
++							: (a.name  > b.name )
++						;
++					});
++
++					for( var i = 0; i < assoclist.length; i++ )
++					{
++						var tr = ac.rows[0].parentNode.insertRow(-1);
++							tr.className = 'cbi-section-table-row cbi-rowstyle-' + (1 + (i % 2));
++
++						var icon;
++						var q = (-1 * (assoclist[i].noise - assoclist[i].signal)) / 5;
++						if (q < 1)
++							icon = "<%=resource%>/icons/signal-0.png";
++						else if (q < 2)
++							icon = "<%=resource%>/icons/signal-0-25.png";
++						else if (q < 3)
++							icon = "<%=resource%>/icons/signal-25-50.png";
++						else if (q < 4)
++							icon = "<%=resource%>/icons/signal-50-75.png";
++						else
++							icon = "<%=resource%>/icons/signal-75-100.png";
++
++						tr.insertCell(-1).innerHTML = String.format(
++							'<img src="%s" title="<%:Signal%>: %d dBm / <%:Noise%>: %d dBm" />',
++							icon, assoclist[i].signal, assoclist[i].noise
++						);
++
++						tr.insertCell(-1).innerHTML = assoclist[i].bssid;
++
++						tr.insertCell(-1).innerHTML = String.format(
++							'<a href="%s">%h</a>',
++								assoclist[i].link,
++								assoclist[i].name
++						);
++
++						tr.insertCell(-1).innerHTML = String.format('%d dBm', assoclist[i].signal);
++						tr.insertCell(-1).innerHTML = String.format('%d dBm', assoclist[i].noise);
++					}
++
++					if (ac.rows.length == 0)
++					{
++						var tr = ac.rows[0].parentNode.insertRow(-1);
++						    tr.className = 'cbi-section-table-row';
++
++						var td = tr.insertCell(-1);
++						    td.colSpan = 5;
++						    td.innerHTML = '<br /><em><%:No information available%></em>';
++					}
++				}
++				<% end %>
++
++				var e;
++
++				if (e = document.getElementById('localtime'))
++					e.innerHTML = info.localtime;
++
++				if (e = document.getElementById('uptime'))
++					e.innerHTML = String.format('%t', info.uptime);
++
++				if (e = document.getElementById('loadavg'))
++					e.innerHTML = String.format('%.02f, %.02f, %.02f',
++						info.loadavg[0], info.loadavg[1], info.loadavg[2]);
++
++				if (e = document.getElementById('memtotal'))
++					e.innerHTML = progressbar(
++						(info.memfree + info.membuffers + info.memcached) + " kB",
++						info.memtotal + " kB"
++					);
++
++				if (e = document.getElementById('memfree'))
++					e.innerHTML = progressbar(
++						info.memfree + " kB", info.memtotal + " kB"
++					);
++
++				if (e = document.getElementById('memcache'))
++					e.innerHTML = progressbar(
++						info.memcached + " kB", info.memtotal + " kB"
++					);
++
++				if (e = document.getElementById('membuff'))
++					e.innerHTML = progressbar(
++						info.membuffers + " kB", info.memtotal + " kB"
++					);
++
++				if (e = document.getElementById('conns'))
++					e.innerHTML = progressbar(info.conncount, info.connmax);
++
++				if (e = document.getElementById('temp'))
++					e.innerHTML = String.format('%.02fc', info.temp / 10);
++					
++				if (e = document.getElementById('vin'))
++					e.innerHTML = String.format('%.02fv', info.vin / 1000);
++				
++				if (e = document.getElementById('in1_name'))
++					e.innerHTML = String.format('%s Voltage', info.input_name[0]);
++				if (e = document.getElementById('in2_name'))
++					e.innerHTML = String.format('%s Voltage', info.input_name[1]);
++				if (e = document.getElementById('in3_name'))
++					e.innerHTML = String.format('%s Voltage', info.input_name[2]);
++				if (e = document.getElementById('in4_name'))
++					e.innerHTML = String.format('%s Voltage', info.input_name[3]);
++				if (e = document.getElementById('in5_name'))
++					e.innerHTML = String.format('%s Voltage', info.input_name[4]);
++				if (e = document.getElementById('in6_name'))
++					e.innerHTML = String.format('%s Voltage', info.input_name[5]);
++				if (e = document.getElementById('in7_name'))
++					e.innerHTML = String.format('%s Voltage', info.input_name[6]);
++				if (e = document.getElementById('in8_name'))
++					e.innerHTML = String.format('%s Voltage', info.input_name[7]);
++				if (e = document.getElementById('in9_name'))
++					e.innerHTML = String.format('%s Voltage', info.input_name[8]);
++				if (e = document.getElementById('in10_name'))
++					e.innerHTML = String.format('%s Voltage', info.input_name[9]);
++				if (e = document.getElementById('in11_name'))
++					e.innerHTML = String.format('%s Voltage', info.input_name[10]);
++				if (e = document.getElementById('in12_name'))
++					e.innerHTML = String.format('%s Voltage', info.input_name[11]);
++
++				if (e = document.getElementById('in1_v'))
++					e.innerHTML = String.format('%.02fv', info.input_volt[0] / 1000);
++				if (e = document.getElementById('in2_v'))
++					e.innerHTML = String.format('%.02fv', info.input_volt[1] / 1000);
++				if (e = document.getElementById('in3_v'))
++					e.innerHTML = String.format('%.02fv', info.input_volt[2] / 1000);
++				if (e = document.getElementById('in4_v'))
++					e.innerHTML = String.format('%.02fv', info.input_volt[3] / 1000);
++				if (e = document.getElementById('in5_v'))
++					e.innerHTML = String.format('%.02fv', info.input_volt[4] / 1000);
++				if (e = document.getElementById('in6_v'))
++					e.innerHTML = String.format('%.02fv', info.input_volt[5] / 1000);
++				if (e = document.getElementById('in7_v'))
++					e.innerHTML = String.format('%.02fv', info.input_volt[6] / 1000);
++				if (e = document.getElementById('in8_v'))
++					e.innerHTML = String.format('%.02fv', info.input_volt[7] / 1000);
++				if (e = document.getElementById('in9_v'))
++					e.innerHTML = String.format('%.02fv', info.input_volt[8] / 1000);
++				if (e = document.getElementById('in10_v'))
++					e.innerHTML = String.format('%.02fv', info.input_volt[9] / 1000);
++				if (e = document.getElementById('in11_v'))
++					e.innerHTML = String.format('%.02fv', info.input_volt[10] / 1000);
++				if (e = document.getElementById('in12_v'))
++					e.innerHTML = String.format('%.02fv', info.input_volt[11] / 1000);
++				
++				window.setTimeout(update_status, 5000);
++			}
++		)
++	};
++
++	update_status();
++//]]></script>
++
++<h2><a id="content" name="content"><%:Status%></a></h2>
++
++<fieldset class="cbi-section">
++	<legend><%:System%></legend>
++
++	<table width="100%" cellspacing="10">
++		<tr><td width="33%"><%:Router Name%></td><td><%=luci.sys.hostname() or "?"%></td></tr>
++		<tr><td width="33%"><%:Router Model%></td><td><%=pcdata(model or "?")%></td></tr>
++		<tr><td width="33%"><%:Firmware Version%></td><td>
++			<%=pcdata(luci.version.distname)%> <%=pcdata(luci.version.distversion)%> /
++			<%=pcdata(luci.version.luciname)%> <%=pcdata(luci.version.luciversion)%>
++		</td></tr>
++		<tr><td width="33%"><%:Kernel Version%></td><td><%=luci.sys.exec("uname -r")%></td></tr>
++		<tr><td width="33%"><%:Local Time%></td><td id="localtime">-</td></tr>
++		<tr><td width="33%"><%:Uptime%></td><td id="uptime">-</td></tr>
++		<tr><td width="33%"><%:Load Average%></td><td id="loadavg">-</td></tr>
++		<tr><td width="33%"><%:Temperature%></td><td id="temp">-</td></tr>
++		<tr><td width="33%"><%:Input Voltage%></td><td id="vin">-</td></tr>
++		<% if has_gsp then %>
++			<% if input_v[1] ~= 16777215 then %> <tr><td width="33%" id="in1_name">-</td><td id="in1_v">-</td></tr> <% end %>
++			<% if input_v[2] ~= 16777215 then %> <tr><td width="33%" id="in2_name">-</td><td id="in2_v">-</td></tr> <% end %>
++			<% if input_v[3] ~= 16777215 then %> <tr><td width="33%" id="in3_name">-</td><td id="in3_v">-</td></tr> <% end %>
++			<% if input_v[4] ~= 16777215 then %> <tr><td width="33%" id="in4_name">-</td><td id="in4_v">-</td></tr> <% end %>
++			<% if input_v[5] ~= 16777215 then %> <tr><td width="33%" id="in5_name">-</td><td id="in5_v">-</td></tr> <% end %>
++			<% if input_v[6] ~= 16777215 then %> <tr><td width="33%" id="in6_name">-</td><td id="in6_v">-</td></tr> <% end %>
++			<% if input_v[7] ~= 16777215 then %> <tr><td width="33%" id="in7_name">-</td><td id="in7_v">-</td></tr> <% end %>
++			<% if input_v[8] ~= 16777215 then %> <tr><td width="33%" id="in8_name">-</td><td id="in8_v">-</td></tr> <% end %>
++			<% if input_v[9] ~= 16777215 then %> <tr><td width="33%" id="in9_name">-</td><td id="in9_v">-</td></tr> <% end %>
++			<% if input_v[10] ~= 16777215 then %> <tr><td width="33%" id="in10_name">-</td><td id="in10_v">-</td></tr> <% end %>
++			<% if input_v[11] ~= 16777215 then %> <tr><td width="33%" id="in11_name">-</td><td id="in11_v">-</td></tr> <% end %>
++			<% if input_v[12] ~= 16777215 then %> <tr><td width="33%" id="in12_name">-</td><td id="in12_v">-</td></tr> <% end %>
++		<% end %>
++	</table>
++</fieldset>
++
++<fieldset class="cbi-section">
++	<legend><%:Memory%></legend>
++
++	<table width="100%" cellspacing="10">
++		<tr><td width="33%"><%:Total Available%></td><td id="memtotal">-</td></tr>
++		<tr><td width="33%"><%:Free%></td><td id="memfree">-</td></tr>
++		<tr><td width="33%"><%:Cached%></td><td id="memcache">-</td></tr>
++		<tr><td width="33%"><%:Buffered%></td><td id="membuff">-</td></tr>
++	</table>
++</fieldset>
++
++<fieldset class="cbi-section">
++	<legend><%:Network%></legend>
++
++	<table width="100%" cellspacing="10">
++		<tr><td width="33%" style="vertical-align:top"><%:IPv4 WAN Status%></td><td>
++			<table><tr>
++				<td id="wan4_i" style="width:16px; text-align:center; padding:3px"><img src="<%=resource%>/icons/ethernet_disabled.png" /><br /><small>?</small></td>
++				<td id="wan4_s" style="vertical-align:middle; padding: 3px"><em><%:Collecting data...%></em></td>
++			</tr></table>
++		</td></tr>
++		<% if has_ipv6 then %>
++		<tr><td width="33%" style="vertical-align:top"><%:IPv6 WAN Status%></td><td>
++			<table><tr>
++				<td id="wan6_i" style="width:16px; text-align:center; padding:3px"><img src="<%=resource%>/icons/ethernet_disabled.png" /><br /><small>?</small></td>
++				<td id="wan6_s" style="vertical-align:middle; padding: 3px"><em><%:Collecting data...%></em></td>
++			</tr></table>
++		</td></tr>
++		<% end %>
++		<tr><td width="33%"><%:Active IP Connections%></td><td id="conns">-</td></tr>
++	</table>
++</fieldset>
++
++<% if has_dhcp then %>
++<fieldset class="cbi-section">
++	<legend><%:DHCP Leases%></legend>
++
++	<table class="cbi-section-table" id="lease_status_table">
++		<tr class="cbi-section-table-titles">
++			<th class="cbi-section-table-cell"><%:Hostname%></th>
++			<th class="cbi-section-table-cell"><%:IPv4-Address%></th>
++			<th class="cbi-section-table-cell"><%:MAC-Address%></th>
++			<th class="cbi-section-table-cell"><%:Leasetime remaining%></th>
++		</tr>
++		<tr class="cbi-section-table-row">
++			<td colspan="4"><em><br /><%:Collecting data...%></em></td>
++		</tr>
++	</table>
++</fieldset>
++<% end %>
++
++<% if has_wifi then %>
++<fieldset class="cbi-section">
++	<legend><%:Wireless%></legend>
++
++	<table id="wifi_status_table" width="100%" cellspacing="10">
++		<tr><td><em><%:Collecting data...%></em></td></tr>
++	</table>
++</fieldset>
++
++<fieldset class="cbi-section">
++	<legend><%:Associated Stations%></legend>
++
++	<table class="cbi-section-table" id="wifi_assoc_table">
++		<tr class="cbi-section-table-titles">
++			<th class="cbi-section-table-cell">&#160;</th>
++			<th class="cbi-section-table-cell"><%:BSSID%></th>
++			<th class="cbi-section-table-cell"><%:Network%></th>
++			<th class="cbi-section-table-cell"><%:Signal%></th>
++			<th class="cbi-section-table-cell"><%:Noise%></th>
++		</tr>
++		<tr class="cbi-section-table-row">
++			<td colspan="5"><em><br /><%:Collecting data...%></em></td>
++		</tr>
++	</table>
++</fieldset>
++<% end %>
++
++<%-
++	require "luci.util"
++	require "nixio.fs"
++
++	local plugins = nixio.fs.dir(luci.util.libpath() .. "/view/admin_status/index")
++	if plugins then
++		local inc
++		for inc in plugins do
++			if inc:match("%.htm$") then
++				include("admin_status/index/" .. inc:gsub("%.htm$", ""))
++			end
++		end
++	end
++-%>
++
++<%+footer%>
+Index: trunk/package/gateworks/files/etc/init.d/serialoverip
+===================================================================
+--- trunk/package/gateworks/files/etc/init.d/serialoverip	(revision 0)
++++ trunk/package/gateworks/files/etc/init.d/serialoverip	(revision 0)
+@@ -0,0 +1,140 @@
++#!/bin/sh /etc/rc.common
++# (C) 2008 openwrt.org
++
++START=96
++COUNT=0
++
++load_serial() {
++  local type               #specifies serialoverip or ser2net
++	local ip                 #serialoverip only (see ipser)
++	local mode               #serialoverip only
++	local port
++	local device
++	local baud
++	local data
++	local parity
++	local stop
++	local state              #ser2net only
++	local timeout            #ser2net only
++	local remctl             #ser2net only
++	local ipser              #ser2nets ip
++	
++	local pidfile
++
++	config_get type $1 type  
++	config_get ip $1 ip "none"
++	config_get mode $1 mode "client"
++	config_get port $1 port 
++	config_get device $1 device "ttyS1"
++	config_get baud $1 baud "115200"
++	config_get data $1 data "8"
++	config_get parity $1 parity "N"
++	config_get stop $1 stop "1"
++	config_get state $1 state "raw"
++	config_get timeout $1 timeout "0"
++	config_get remctl $1 remctl "OFF"
++ 
++	 
++
++ 	
++	#serialoverip
++	[ "$type" == "serialoverip" ] && {
++		[ -e /usr/sbin/serialoverip ] && {
++                        let "COUNT += 1"
++			pidfile="/var/run/serialoverip.$COUNT.pid"
++			[ "$mode" == "client" ] && {
++		        	echo "Starting a serialoverip client"
++                		start-stop-daemon -S -x /usr/sbin/serialoverip \
++                		-p "${pidfile}" \
++                		-m -b -- -c ${ip} ${port} -d /dev/${device} ${baud}-${data}${parity}${stop}
++                	}
++			[ "$mode" == "server" ] &&  {
++		        	echo "Starting a serialoverip server"
++				start-stop-daemon -S -x /usr/sbin/serialoverip \
++				-p  $pidfile \
++				-m -b -- -d /dev/${device} ${baud}-${data}${parity}${stop} -s ${ip} ${port}
++	        	}
++		}
++		/bin/stty -F /dev/${device} cread
++	}
++	
++	#ser2net
++	[ "$type" == "ser2net" ] && {
++		[ -e /usr/sbin/ser2net ] && {
++			[ "$parity" == "O" ] && {
++				parity = "ODD"
++			}
++			[ "$parity" == "E" ] && {
++				parity="EVEN"
++			}
++			[ "$parity" == "N" ] && {
++				parity="NONE"
++			}
++			[ "$stop" == "1" ] && {
++				stop="1STOPBIT"
++			}
++			[ "$stop" == "2" ] && {
++				stop="2STOPBIT"
++			}
++			[ "$data" == "7" ] && {
++				data="7DATABITS"
++			}
++			[ "$data" == "8" ] && {
++				data="8DATABITS"
++			}
++			[ "$ip" != "none" ] && {
++				port="${ipser},$port" 
++				echo $port 
++			}
++			
++			echo "Creating config file for ser2net"
++			[ "$remctl" == "ON" ] && {
++				echo "$port:$state:$timeout:/dev/$device:$baud $parity $stop $data remctl" >> /etc/ser2net.conf
++			}
++			[ "$remctl" == "OFF" ] && { 
++				echo "$port:$state:$timeout:/dev/$device:$baud $parity $stop $data" >> /etc/ser2net.conf
++			}
++		}
++	}
++}
++
++
++start() {
++	
++	config_load serialoverip
++	
++	echo "Clearing ser2net config file"
++ 	: > /etc/ser2net.conf
++ 	
++	config_foreach load_serial serial
++	
++	[ -s /etc/ser2net.conf ] && {
++		echo "starting ser2net" 
++		/usr/sbin/ser2net \
++		-P /var/run/ser2net.pid
++	}
++
++
++
++
++}
++	
++stop() {
++	local pidfile
++	for pidfile in `ls /var/run/serialoverip.*.pid`
++	do
++		echo "stopping $pidfile"
++	
++			
++		start-stop-daemon -K  \
++		-p "${pidfile}" -s INT
++		rm -f "${pidfile}"
++	done
++	pidfile="/var/run/ser2net.pid"
++	[ -e /var/run/ser2net.pid ] && {
++		start-stop-daemon -K \
++		-p "${pidfile}" -s INT
++		rm -f "${pidfile}"
++	} 
++}
++
+
+Property changes on: trunk/package/gateworks/files/etc/init.d/serialoverip
+___________________________________________________________________
+Added: svn:executable
+   + *
+
+Index: trunk/package/gateworks/files/etc/config/serialoverip
+===================================================================
+--- trunk/package/gateworks/files/etc/config/serialoverip	(revision 0)
++++ trunk/package/gateworks/files/etc/config/serialoverip	(revision 0)
+@@ -0,0 +1,3 @@
++
++config 'serial'
++
+Index: trunk/package/gateworks/files/etc/uci-defaults/serialoverip
+===================================================================
+--- trunk/package/gateworks/files/etc/uci-defaults/serialoverip	(revision 0)
++++ trunk/package/gateworks/files/etc/uci-defaults/serialoverip	(revision 0)
+@@ -0,0 +1,12 @@
++#!/bin/sh
++
++# register commit handler
++[ -f /etc/config/ucitrack ] && \
++[ "$(uci get ucitrack.@serialoverip[0] 2>/dev/null)" != "serialoverip" ] && \
++uci batch <<-EOF >/dev/null 2>/dev/null
++	add ucitrack serialoverip
++	set ucitrack.@serialoverip[-1].init=serialoverip
++	commit ucitrack
++EOF
++
++exit 0
+Index: trunk/package/gateworks/files/etc/asound.conf
+===================================================================
+--- trunk/package/gateworks/files/etc/asound.conf	(revision 0)
++++ trunk/package/gateworks/files/etc/asound.conf	(revision 0)
+@@ -0,0 +1,195 @@
++pcm.dmixed1 {
++    type dmix
++    ipc_key 2048
++    slave {
++        pcm "hw:0"
++        rate 8000
++        period_time 0
++        period_size 1024
++        buffer_size 8192
++        channels 2
++    }
++    bindings {
++        0 0
++        1 1
++    }
++}
++pcm.dmixed2 {
++    type dmix
++    ipc_key 2049
++    slave {
++        pcm "hw:1"
++        rate 8000
++        period_time 0
++        period_size 1024
++        buffer_size 8192
++        channels 2
++    }
++    bindings {
++        0 0
++        1 1
++    }
++}
++pcm.dmixed3 {
++    type dmix
++    ipc_key 2048
++    slave {
++        pcm "hw:2"
++        rate 8000
++        period_time 0
++        period_size 1024
++        buffer_size 8192
++        channels 2
++    }
++    bindings {
++        0 0
++        1 1
++    }
++}
++pcm.dmixed4 {
++    type dmix
++    ipc_key 2049
++    slave {
++        pcm "hw:3"
++        rate 8000
++        period_time 0
++        period_size 1024
++        buffer_size 8192
++        channels 2
++    }
++    bindings {
++        0 0
++        1 1
++    }
++}
++
++pcm.dsnooped1 {
++    type dsnoop
++    ipc_key 2050
++    slave {
++        pcm "hw:0"
++        rate 8000
++        period_time 0
++        period_size 1024
++        buffer_size 8192
++        channels 2
++    }
++    bindings {
++        0 0
++        1 1
++    }
++}
++pcm.dsnooped2 {
++    type dsnoop
++    ipc_key 2050
++    slave {
++        pcm "hw:1"
++        rate 8000
++        period_time 0
++        period_size 1024
++        buffer_size 8192
++        channels 2
++    }
++    bindings {
++        0 0
++        1 1
++    }
++}
++pcm.dsnooped3 {
++    type dsnoop
++    ipc_key 2050
++    slave {
++        pcm "hw:2"
++        rate 8000
++        period_time 0
++        period_size 1024
++        buffer_size 8192
++        channels 2
++    }
++    bindings {
++        0 0
++        1 1
++    }
++}
++pcm.dsnooped4 {
++    type dsnoop
++    ipc_key 2050
++    slave {
++        pcm "hw:3"
++        rate 8000
++        period_time 0
++        period_size 1024
++        buffer_size 8192
++        channels 2
++    }
++    bindings {
++        0 0
++        1 1
++    }
++}
++
++pcm.play_channel1 {
++    type plug
++    slave {
++        pcm "dmixed1"
++        channels 2
++    }
++    ttable.0.0 1
++}
++pcm.play_channel2 {
++    type plug
++    slave {
++        pcm "dmixed2"
++        channels 2
++    }
++    ttable.0.0 1
++}
++pcm.play_channel3 {
++    type plug
++    slave {
++        pcm "dmixed3"
++        channels 2
++    }
++    ttable.0.0 1
++}
++pcm.play_channel4 {
++    type plug
++    slave {
++        pcm "dmixed4"
++        channels 2
++    }
++    ttable.0.0 1
++}
++
++pcm.record_channel1 {
++    type plug
++    slave {
++        pcm "dsnooped1"
++        channels 2
++    }
++    ttable.0.0 1
++}
++pcm.record_channel2 {
++    type plug
++    slave {
++        pcm "dsnooped2"
++        channels 2
++    }
++    ttable.0.0 1
++}
++pcm.record_channel3 {
++    type plug
++    slave {
++        pcm "dsnooped3"
++        channels 2
++    }
++    ttable.0.0 1
++}
++pcm.record_channel4 {
++    type plug
++    slave {
++        pcm "dsnooped4"
++        channels 2
++    }
++    ttable.0.0 1
++}
+Index: trunk/package/gateworks/src/test_audio.c
+===================================================================
+--- trunk/package/gateworks/src/test_audio.c	(revision 0)
++++ trunk/package/gateworks/src/test_audio.c	(revision 0)
+@@ -0,0 +1,299 @@
++#include <stdio.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <sys/ioctl.h>
++#include <alsa/asoundlib.h>
++#include <linux/soundcard.h>
++#include <math.h>
++
++#define PI  ((float) 3.141592654)
++#define MAXFREQ   50000
++#define BUFSIZE   (2*MAXFREQ)
++
++short buf[BUFSIZE];
++
++static short linear16FromuLaw(unsigned char uLawByte) {
++  static int exp_lut[8] = {0,132,396,924,1980,4092,8316,16764};
++	int sign;
++  uLawByte = ~uLawByte;
++
++  sign = (uLawByte & 0x80) != 0;
++  unsigned char exponent = (uLawByte>>4) & 0x07;
++  unsigned char mantissa = uLawByte & 0x0F;
++
++  short result = exp_lut[exponent] + (mantissa << (exponent+3));
++  if (sign) result = -result;
++  return result;
++}
++#define         BIAS            (0x84)      /* Bias for linear code. */
++#define CLIP 32635
++static unsigned char uLawFrom16BitLinear(unsigned short sample) {
++  static int exp_lut[256] = {0,0,1,1,2,2,2,2,3,3,3,3,3,3,3,3,
++           4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,
++           5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,
++           5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,
++           6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
++           6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
++           6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
++           6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
++           7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
++           7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
++           7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
++           7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
++           7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
++           7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
++           7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
++           7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7};
++  unsigned char sign = (sample >> 8) & 0x80;
++  if (sign != 0) sample = -sample; // get the magnitude
++  if (sample > CLIP) sample = CLIP; // clip the magnitude
++  sample += BIAS;
++
++  unsigned char exponent = exp_lut[(sample>>7) & 0xFF];
++  unsigned char mantissa = (sample >> (exponent+3)) & 0x0F;
++  unsigned char result = ~(sign | (exponent << 4) | mantissa);
++  if (result == 0 ) result = 0x02;  // CCITT trap
++
++  return result;
++}
++
++int mksinebuf(short *bp, int rf, int wf)
++{
++  float radspersample;
++  int samplespercycle, i;
++  short val;
++
++  samplespercycle = rf / wf;
++  radspersample = (2 * PI) / samplespercycle;
++
++  for (i = 0; (i < samplespercycle); i++) {
++    val = (short) (32767 * sin(i * radspersample));
++    *bp++ = val;
++    *bp++ = val;
++  }
++
++  return(samplespercycle);
++}
++
++
++int main(int argc, char **argv)
++{
++	unsigned char raw[2048];
++	int i, fd;
++	int size;
++	char rec_name[64];
++	char play_name[64];
++	char file_name[64];
++
++	memset(rec_name, 0, 64);
++	memset(play_name, 0, 64);
++	memset(file_name, 0, 64);
++
++	int frames;
++
++	snd_pcm_t *handle;
++
++	snd_pcm_t *handle2;
++
++	if (argc < 2) {
++		printf("\n");
++		printf("\ttest_audio 1 <chan>       \tloopback chan to itself\n");
++		printf("\ttest_audio 2 <chan>       \trecord chan to audio<chan>.bin\n");
++		printf("\ttest_audio 3 <chan>       \tplay audio<chan>.bin to chan\n");
++		printf("\ttest_audio 4 <freq> <chan>\tplay sine wave freq to chan\n");
++		printf("\ttest_audio 5 <chan>       \tplay nothing to chan\n");
++		printf("\ttest_audio 6 <chan>       \tplay fixed output and record from chan\n");
++		printf("\ttest_audio 7 <chan>       \t?\n");
++		printf("\ttest_audio 8 <chan>       \tloopback chan to itself at 32K\n");
++		printf("\n");
++		exit(1);
++	}
++
++	if (atol(argv[1]) == 1)
++	{
++		sprintf(rec_name, "%s%i", "record_channel", atol(argv[2]));
++		sprintf(play_name, "%s%i", "play_channel", atol(argv[2]));
++
++    snd_pcm_open(&handle, rec_name, SND_PCM_STREAM_CAPTURE, 0);
++    snd_pcm_set_params(handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 8000, 1, 500000);
++
++    snd_pcm_open(&handle2, play_name, SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
++    snd_pcm_set_params(handle2, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 8000, 1, 50000);
++		while (1)
++		{
++
++		  while ( (frames = snd_pcm_readi(handle, raw, 40)) < 0) {
++    		frames = snd_pcm_recover(handle, frames, 1);
++  		}
++
++  		while ( (frames = snd_pcm_writei(handle2, raw, 40)) < 0) {
++    		snd_pcm_recover(handle2, frames, 1);
++  		}
++		}
++		exit(1);
++	}
++	else if (atol(argv[1]) == 2)
++	{
++		sprintf(rec_name, "%s%i", "record_channel", atol(argv[2]));
++		sprintf(file_name, "audio%i.bin", atol(argv[2]));
++
++    snd_pcm_open(&handle, rec_name, SND_PCM_STREAM_CAPTURE, 0);
++    snd_pcm_set_params(handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 8000, 1, 500000);
++
++		fd = open(file_name, O_WRONLY | O_TRUNC | O_CREAT);
++
++		while (1)
++		{
++		  while ( (frames = snd_pcm_readi(handle, raw, 20)) < 0) // Convert to Frames
++		  {
++				printf("recover\n");
++		    frames = snd_pcm_recover(handle, frames, 1);
++		  }
++			//printf("write %i\n", frames * 2);
++			write(fd, raw, frames * 2);
++		}
++		close(fd);
++		exit(1);
++	}
++	else if (atol(argv[1]) == 3)
++	{
++		sprintf(play_name, "%s%i", "play_channel", atol(argv[2]));
++		sprintf(file_name, "audio%i.bin", atol(argv[2]));
++
++    snd_pcm_open(&handle2, play_name, SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
++    snd_pcm_set_params(handle2, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 8000, 1, 50000);
++
++		fd = open(file_name, O_RDONLY);
++
++		while (i = read(fd, raw, 80))
++		{
++		  while ( (frames = snd_pcm_writei(handle2, raw, 40)) < 0)
++		  {
++		    snd_pcm_recover(handle2, frames, 1);
++		  }
++		}
++		close(fd);
++		exit(1);
++	}
++	else if (atol(argv[1]) == 4)
++	{
++		sprintf(play_name, "%s%i", "play_channel", atol(argv[3]));
++
++    snd_pcm_open(&handle2, play_name, SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
++    snd_pcm_set_params(handle2, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 8000, 1, 50000);
++
++		size = mksinebuf(buf, 8000, atol(argv[2]));
++		for (i = 0; i < size; i++)
++		{
++			printf("buf[%i] = %i\n", i, buf[i]);
++		}
++		while (1)
++		{
++		  while ( (frames = snd_pcm_writei(handle2, buf, size)) < 0)
++		  {
++				//printf("recover - frames = %i, size = %i, channel = %i\n", frames, size, atol(argv[3]));
++		    snd_pcm_recover(handle2, frames, 1);
++		  }
++		}
++		close(fd);
++		exit(1);
++	}
++	else if (atol(argv[1]) == 5)
++	{
++		sprintf(play_name, "%s%i", "play_channel", atol(argv[2]));
++
++    snd_pcm_open(&handle2, play_name, SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
++    snd_pcm_set_params(handle2, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 8000, 1, 50000);
++
++		memset(buf, 0, BUFSIZE * 2);
++		while (1)
++		{
++		  while ( (frames = snd_pcm_writei(handle2, buf, 40)) < 0)
++		  {
++		    snd_pcm_recover(handle2, frames, 1);
++		  }
++		}
++		close(fd);
++		exit(1);
++	}
++	else if (atol(argv[1]) == 6)
++	{
++		sprintf(play_name, "%s%i", "play_channel", atol(argv[2]));
++		sprintf(rec_name, "%s%i", "record_channel", atol(argv[2]));
++
++		sprintf(file_name, "audio%i.bin", atol(argv[2]));
++
++    snd_pcm_open(&handle2, play_name, SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
++    snd_pcm_set_params(handle2, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 8000, 1, 50000);
++
++    snd_pcm_open(&handle, rec_name, SND_PCM_STREAM_CAPTURE, 0);
++    snd_pcm_set_params(handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 8000, 1, 500000);
++
++		fd = open(file_name, O_WRONLY | O_TRUNC | O_CREAT);
++
++		for (i = 0; i < 80; i++)
++			buf[i] = i + (atol(argv[2]) * 0x100);
++		while (1)
++		{
++		  while ( (frames = snd_pcm_writei(handle2, buf, 40)) < 0)
++		  {
++		    snd_pcm_recover(handle2, frames, 1);
++		  }
++		  while ( (frames = snd_pcm_readi(handle, raw, 40)) < 0) // Convert to Frames
++		  {
++				printf("recover\n");
++		    frames = snd_pcm_recover(handle, frames, 1);
++		  }
++			//printf("write %i\n", frames * 2);
++			write(fd, raw, frames * 2);
++		}
++		close(fd);
++		exit(1);
++	}
++	else if (atol(argv[1]) == 7)
++	{
++		sprintf(play_name, "%s%i", "play_channel", atol(argv[3]));
++
++    snd_pcm_open(&handle2, play_name, SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
++    snd_pcm_set_params(handle2, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 8000, 1, 50000);
++
++		buf[0] = 0;
++		buf[1] = 0;
++		buf[2] = 0xFFFF;
++		buf[3] = 0xFFFF;
++		while (1)
++		{
++		  while ( (frames = snd_pcm_writei(handle2, buf, 4)) < 0)
++		  {
++				//printf("recover - frames = %i, size = %i, channel = %i\n", frames, size, atol(argv[3]));
++		    snd_pcm_recover(handle2, frames, 1);
++		  }
++		}
++		close(fd);
++		exit(1);
++	} else if (atol(argv[1]) == 8) {
++		sprintf(rec_name, "%s%i", "record_channel", atol(argv[2]));
++		sprintf(play_name, "%s%i", "play_channel", atol(argv[2]));
++
++    snd_pcm_open(&handle, rec_name, SND_PCM_STREAM_CAPTURE, 0);
++    snd_pcm_set_params(handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 32000, 1, 500000);
++
++    snd_pcm_open(&handle2, play_name, SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
++    snd_pcm_set_params(handle2, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 1, 32000, 1, 50000);
++		while (1)
++		{
++
++		  while ( (frames = snd_pcm_readi(handle, raw, 40)) < 0) {
++    		frames = snd_pcm_recover(handle, frames, 1);
++  		}
++
++  		while ( (frames = snd_pcm_writei(handle2, raw, 40)) < 0) {
++    		snd_pcm_recover(handle2, frames, 1);
++  		}
++		}
++		exit(1);
++	}
++
++
++}
+Index: trunk/package/gateworks/src/i2c.h
+===================================================================
+--- trunk/package/gateworks/src/i2c.h	(revision 0)
++++ trunk/package/gateworks/src/i2c.h	(revision 0)
+@@ -0,0 +1,338 @@
++/*
++    i2c-dev.h - i2c-bus driver, char device interface
++
++    Copyright (C) 1995-97 Simon G. Vogl
++    Copyright (C) 1998-99 Frodo Looijaard <frodol@dds.nl>
++
++    This program is free software; you can redistribute it and/or modify
++    it under the terms of the GNU General Public License as published by
++    the Free Software Foundation; either version 2 of the License, or
++    (at your option) any later version.
++
++    This program is distributed in the hope that it will be useful,
++    but WITHOUT ANY WARRANTY; without even the implied warranty of
++    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++    GNU General Public License for more details.
++
++    You should have received a copy of the GNU General Public License
++    along with this program; if not, write to the Free Software
++    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
++    MA 02110-1301 USA.
++*/
++
++/* $Id: i2c-dev.h 5164 2008-03-26 13:48:21Z khali $ */
++
++#ifndef LIB_I2CDEV_H
++#define LIB_I2CDEV_H
++
++#include <linux/types.h>
++#include <sys/ioctl.h>
++
++
++/* -- i2c.h -- */
++
++
++/*
++ * I2C Message - used for pure i2c transaction, also from /dev interface
++ */
++struct i2c_msg {
++	__u16 addr;	/* slave address			*/
++	unsigned short flags;		
++#define I2C_M_TEN	0x10	/* we have a ten bit chip address	*/
++#define I2C_M_RD	0x01
++#define I2C_M_NOSTART	0x4000
++#define I2C_M_REV_DIR_ADDR	0x2000
++#define I2C_M_IGNORE_NAK	0x1000
++#define I2C_M_NO_RD_ACK		0x0800
++	short len;		/* msg length				*/
++	char *buf;		/* pointer to msg data			*/
++};
++
++/* To determine what functionality is present */
++
++#define I2C_FUNC_I2C			0x00000001
++#define I2C_FUNC_10BIT_ADDR		0x00000002
++#define I2C_FUNC_PROTOCOL_MANGLING	0x00000004 /* I2C_M_{REV_DIR_ADDR,NOSTART,..} */
++#define I2C_FUNC_SMBUS_PEC		0x00000008
++#define I2C_FUNC_SMBUS_BLOCK_PROC_CALL	0x00008000 /* SMBus 2.0 */
++#define I2C_FUNC_SMBUS_QUICK		0x00010000 
++#define I2C_FUNC_SMBUS_READ_BYTE	0x00020000 
++#define I2C_FUNC_SMBUS_WRITE_BYTE	0x00040000 
++#define I2C_FUNC_SMBUS_READ_BYTE_DATA	0x00080000 
++#define I2C_FUNC_SMBUS_WRITE_BYTE_DATA	0x00100000 
++#define I2C_FUNC_SMBUS_READ_WORD_DATA	0x00200000 
++#define I2C_FUNC_SMBUS_WRITE_WORD_DATA	0x00400000 
++#define I2C_FUNC_SMBUS_PROC_CALL	0x00800000 
++#define I2C_FUNC_SMBUS_READ_BLOCK_DATA	0x01000000 
++#define I2C_FUNC_SMBUS_WRITE_BLOCK_DATA 0x02000000 
++#define I2C_FUNC_SMBUS_READ_I2C_BLOCK	0x04000000 /* I2C-like block xfer  */
++#define I2C_FUNC_SMBUS_WRITE_I2C_BLOCK	0x08000000 /* w/ 1-byte reg. addr. */
++#define I2C_FUNC_SMBUS_READ_I2C_BLOCK_2	 0x10000000 /* I2C-like block xfer  */
++#define I2C_FUNC_SMBUS_WRITE_I2C_BLOCK_2 0x20000000 /* w/ 2-byte reg. addr. */
++
++#define I2C_FUNC_SMBUS_BYTE (I2C_FUNC_SMBUS_READ_BYTE | \
++                             I2C_FUNC_SMBUS_WRITE_BYTE)
++#define I2C_FUNC_SMBUS_BYTE_DATA (I2C_FUNC_SMBUS_READ_BYTE_DATA | \
++                                  I2C_FUNC_SMBUS_WRITE_BYTE_DATA)
++#define I2C_FUNC_SMBUS_WORD_DATA (I2C_FUNC_SMBUS_READ_WORD_DATA | \
++                                  I2C_FUNC_SMBUS_WRITE_WORD_DATA)
++#define I2C_FUNC_SMBUS_BLOCK_DATA (I2C_FUNC_SMBUS_READ_BLOCK_DATA | \
++                                   I2C_FUNC_SMBUS_WRITE_BLOCK_DATA)
++#define I2C_FUNC_SMBUS_I2C_BLOCK (I2C_FUNC_SMBUS_READ_I2C_BLOCK | \
++                                  I2C_FUNC_SMBUS_WRITE_I2C_BLOCK)
++#define I2C_FUNC_SMBUS_I2C_BLOCK_2 (I2C_FUNC_SMBUS_READ_I2C_BLOCK_2 | \
++                                    I2C_FUNC_SMBUS_WRITE_I2C_BLOCK_2)
++
++/* Old name, for compatibility */
++#define I2C_FUNC_SMBUS_HWPEC_CALC	I2C_FUNC_SMBUS_PEC
++
++/* 
++ * Data for SMBus Messages 
++ */
++#define I2C_SMBUS_BLOCK_MAX	32	/* As specified in SMBus standard */	
++#define I2C_SMBUS_I2C_BLOCK_MAX	32	/* Not specified but we use same structure */
++union i2c_smbus_data {
++	__u8 byte;
++	__u16 word;
++	__u8 block[I2C_SMBUS_BLOCK_MAX + 2]; /* block[0] is used for length */
++	                                            /* and one more for PEC */
++};
++
++/* smbus_access read or write markers */
++#define I2C_SMBUS_READ	1
++#define I2C_SMBUS_WRITE	0
++
++/* SMBus transaction types (size parameter in the above functions) 
++   Note: these no longer correspond to the (arbitrary) PIIX4 internal codes! */
++#define I2C_SMBUS_QUICK		    0
++#define I2C_SMBUS_BYTE		    1
++#define I2C_SMBUS_BYTE_DATA	    2 
++#define I2C_SMBUS_WORD_DATA	    3
++#define I2C_SMBUS_PROC_CALL	    4
++#define I2C_SMBUS_BLOCK_DATA	    5
++#define I2C_SMBUS_I2C_BLOCK_BROKEN  6
++#define I2C_SMBUS_BLOCK_PROC_CALL   7		/* SMBus 2.0 */
++#define I2C_SMBUS_I2C_BLOCK_DATA    8
++
++
++/* ----- commands for the ioctl like i2c_command call:
++ * note that additional calls are defined in the algorithm and hw 
++ *	dependent layers - these can be listed here, or see the 
++ *	corresponding header files.
++ */
++				/* -> bit-adapter specific ioctls	*/
++#define I2C_RETRIES	0x0701	/* number of times a device address      */
++				/* should be polled when not            */
++                                /* acknowledging 			*/
++#define I2C_TIMEOUT	0x0702	/* set timeout - call with int 		*/
++
++
++/* this is for i2c-dev.c	*/
++#define I2C_SLAVE	0x0703	/* Change slave address			*/
++				/* Attn.: Slave address is 7 or 10 bits */
++#define I2C_SLAVE_FORCE	0x0706	/* Change slave address			*/
++				/* Attn.: Slave address is 7 or 10 bits */
++				/* This changes the address, even if it */
++				/* is already taken!			*/
++#define I2C_TENBIT	0x0704	/* 0 for 7 bit addrs, != 0 for 10 bit	*/
++
++#define I2C_FUNCS	0x0705	/* Get the adapter functionality */
++#define I2C_RDWR	0x0707	/* Combined R/W transfer (one stop only)*/
++#define I2C_PEC		0x0708	/* != 0 for SMBus PEC                   */
++
++#define I2C_SMBUS	0x0720	/* SMBus-level access */
++
++/* -- i2c.h -- */
++
++
++/* Note: 10-bit addresses are NOT supported! */
++
++/* This is the structure as used in the I2C_SMBUS ioctl call */
++struct i2c_smbus_ioctl_data {
++	char read_write;
++	__u8 command;
++	int size;
++	union i2c_smbus_data *data;
++};
++
++/* This is the structure as used in the I2C_RDWR ioctl call */
++struct i2c_rdwr_ioctl_data {
++	struct i2c_msg *msgs;	/* pointers to i2c_msgs */
++	int nmsgs;		/* number of i2c_msgs */
++};
++
++
++static inline __s32 i2c_smbus_access(int file, char read_write, __u8 command, 
++                                     int size, union i2c_smbus_data *data)
++{
++	struct i2c_smbus_ioctl_data args;
++
++	args.read_write = read_write;
++	args.command = command;
++	args.size = size;
++	args.data = data;
++	return ioctl(file,I2C_SMBUS,&args);
++}
++
++
++static inline __s32 i2c_smbus_write_quick(int file, __u8 value)
++{
++	return i2c_smbus_access(file,value,0,I2C_SMBUS_QUICK,NULL);
++}
++	
++static inline __s32 i2c_smbus_read_byte(int file)
++{
++	union i2c_smbus_data data;
++	if (i2c_smbus_access(file,I2C_SMBUS_READ,0,I2C_SMBUS_BYTE,&data))
++		return -1;
++	else
++		return 0x0FF & data.byte;
++}
++
++static inline __s32 i2c_smbus_write_byte(int file, __u8 value)
++{
++	return i2c_smbus_access(file,I2C_SMBUS_WRITE,value,
++	                        I2C_SMBUS_BYTE,NULL);
++}
++
++static inline __s32 i2c_smbus_read_byte_data(int file, __u8 command)
++{
++	union i2c_smbus_data data;
++	if (i2c_smbus_access(file,I2C_SMBUS_READ,command,
++	                     I2C_SMBUS_BYTE_DATA,&data))
++		return -1;
++	else
++		return 0x0FF & data.byte;
++}
++
++static inline __s32 i2c_smbus_write_byte_data(int file, __u8 command, 
++                                              __u8 value)
++{
++	union i2c_smbus_data data;
++	data.byte = value;
++	return i2c_smbus_access(file,I2C_SMBUS_WRITE,command,
++	                        I2C_SMBUS_BYTE_DATA, &data);
++}
++
++static inline __s32 i2c_smbus_read_word_data(int file, __u8 command)
++{
++	union i2c_smbus_data data;
++	if (i2c_smbus_access(file,I2C_SMBUS_READ,command,
++	                     I2C_SMBUS_WORD_DATA,&data))
++		return -1;
++	else
++		return 0x0FFFF & data.word;
++}
++
++static inline __s32 i2c_smbus_write_word_data(int file, __u8 command, 
++                                              __u16 value)
++{
++	union i2c_smbus_data data;
++	data.word = value;
++	return i2c_smbus_access(file,I2C_SMBUS_WRITE,command,
++	                        I2C_SMBUS_WORD_DATA, &data);
++}
++
++static inline __s32 i2c_smbus_process_call(int file, __u8 command, __u16 value)
++{
++	union i2c_smbus_data data;
++	data.word = value;
++	if (i2c_smbus_access(file,I2C_SMBUS_WRITE,command,
++	                     I2C_SMBUS_PROC_CALL,&data))
++		return -1;
++	else
++		return 0x0FFFF & data.word;
++}
++
++
++/* Returns the number of read bytes */
++static inline __s32 i2c_smbus_read_block_data(int file, __u8 command, 
++                                              __u8 *values)
++{
++	union i2c_smbus_data data;
++	int i;
++	if (i2c_smbus_access(file,I2C_SMBUS_READ,command,
++	                     I2C_SMBUS_BLOCK_DATA,&data))
++		return -1;
++	else {
++		for (i = 1; i <= data.block[0]; i++)
++			values[i-1] = data.block[i];
++		return data.block[0];
++	}
++}
++
++static inline __s32 i2c_smbus_write_block_data(int file, __u8 command, 
++                                               __u8 length, __u8 *values)
++{
++	union i2c_smbus_data data;
++	int i;
++	if (length > 32)
++		length = 32;
++	for (i = 1; i <= length; i++)
++		data.block[i] = values[i-1];
++	data.block[0] = length;
++	return i2c_smbus_access(file,I2C_SMBUS_WRITE,command,
++	                        I2C_SMBUS_BLOCK_DATA, &data);
++}
++
++/* Returns the number of read bytes */
++/* Until kernel 2.6.22, the length is hardcoded to 32 bytes. If you
++   ask for less than 32 bytes, your code will only work with kernels
++   2.6.23 and later. */
++static inline __s32 i2c_smbus_read_i2c_block_data(int file, __u8 command,
++                                                  __u8 length, __u8 *values)
++{
++	union i2c_smbus_data data;
++	int i;
++
++	if (length > 32)
++		length = 32;
++	data.block[0] = length;
++	if (i2c_smbus_access(file,I2C_SMBUS_READ,command,
++	                     length == 32 ? I2C_SMBUS_I2C_BLOCK_BROKEN :
++	                      I2C_SMBUS_I2C_BLOCK_DATA,&data))
++		return -1;
++	else {
++		for (i = 1; i <= data.block[0]; i++)
++			values[i-1] = data.block[i];
++		return data.block[0];
++	}
++}
++
++static inline __s32 i2c_smbus_write_i2c_block_data(int file, __u8 command,
++                                               __u8 length, __u8 *values)
++{
++	union i2c_smbus_data data;
++	int i;
++	if (length > 32)
++		length = 32;
++	for (i = 1; i <= length; i++)
++		data.block[i] = values[i-1];
++	data.block[0] = length;
++	return i2c_smbus_access(file,I2C_SMBUS_WRITE,command,
++	                        I2C_SMBUS_I2C_BLOCK_BROKEN, &data);
++}
++
++/* Returns the number of read bytes */
++static inline __s32 i2c_smbus_block_process_call(int file, __u8 command,
++                                                 __u8 length, __u8 *values)
++{
++	union i2c_smbus_data data;
++	int i;
++	if (length > 32)
++		length = 32;
++	for (i = 1; i <= length; i++)
++		data.block[i] = values[i-1];
++	data.block[0] = length;
++	if (i2c_smbus_access(file,I2C_SMBUS_WRITE,command,
++	                     I2C_SMBUS_BLOCK_PROC_CALL,&data))
++		return -1;
++	else {
++		for (i = 1; i <= data.block[0]; i++)
++			values[i-1] = data.block[i];
++		return data.block[0];
++	}
++}
++
++
++#endif /* LIB_I2CDEV_H */
+Index: trunk/package/gateworks/src/i2c_upgrader.h
+===================================================================
+--- trunk/package/gateworks/src/i2c_upgrader.h	(revision 0)
++++ trunk/package/gateworks/src/i2c_upgrader.h	(revision 0)
+@@ -0,0 +1,87 @@
++unsigned short i2c_upgrader_address[2] = {0xE552, 0xFFFE};
++unsigned char i2c_upgrader_data[2][1024] = {
++	{
++		0x31,0x40,0x00,0x04,0xB0,0x12,0x5E,0xE5,0xB0,0x12,0x84,0xE7,0xB2,0x40,0x80,0x5A,
++		0x20,0x01,0xF2,0x40,0x0D,0x00,0x57,0x00,0xD2,0x42,0xFB,0x10,0x57,0x00,0xD2,0x42,
++		0xFA,0x10,0x56,0x00,0xF2,0xC0,0x10,0x00,0x19,0x00,0xF2,0xD0,0x10,0x00,0x10,0x00,
++		0xF2,0xC0,0x10,0x00,0x1A,0x00,0xB2,0x40,0x42,0xA5,0x2A,0x01,0xF2,0xF0,0xF8,0x00,
++		0x22,0x00,0xF2,0xF0,0xF8,0x00,0x21,0x00,0x25,0x43,0x37,0x40,0xBA,0xE5,0x38,0x40,
++		0x82,0xE7,0x39,0x40,0x00,0x02,0xA9,0x47,0x00,0x00,0x07,0x55,0x09,0x55,0x08,0x97,
++		0xFA,0x23,0x27,0x42,0x30,0x40,0x00,0x02,0xD2,0xB3,0x20,0x00,0xFD,0x2B,0xE2,0xB3,
++		0x20,0x00,0xFA,0x2B,0xD2,0xB3,0x20,0x00,0xF7,0x2B,0xE2,0xB3,0x20,0x00,0xFA,0x2F,
++		0xD2,0xB3,0x20,0x00,0xFD,0x2F,0x06,0x40,0x06,0x57,0x91,0x3C,0x0E,0x44,0x7E,0xF0,
++		0xFE,0x00,0x7E,0x90,0x42,0x00,0xE8,0x23,0x14,0xB3,0x21,0x28,0xD2,0xB3,0x20,0x00,
++		0xFD,0x2F,0xE2,0xD3,0x22,0x00,0xD2,0xB3,0x20,0x00,0xFD,0x2B,0x0E,0x43,0x09,0x3C,
++		0xD2,0xB3,0x20,0x00,0xFD,0x2F,0xE2,0xD3,0x22,0x00,0xD2,0xB3,0x20,0x00,0xFD,0x2B,
++		0x1E,0x53,0x3E,0x92,0xF5,0x3B,0xD2,0xB3,0x20,0x00,0xFD,0x2F,0xE2,0xC3,0x22,0x00,
++		0xD2,0xB3,0x20,0x00,0xFD,0x2B,0xD2,0xB3,0x20,0x00,0xFD,0x2F,0x61,0x3C,0x06,0x40,
++		0x06,0x57,0x8D,0x3C,0x06,0x40,0x06,0x57,0x62,0x3C,0x06,0x40,0x06,0x57,0x87,0x3C,
++		0x14,0x93,0x03,0x20,0x82,0x43,0x20,0x01,0x53,0x3C,0x24,0x93,0x13,0x20,0x06,0x40,
++		0x06,0x57,0x55,0x3C,0x0F,0x44,0x06,0x40,0x06,0x57,0x79,0x3C,0x06,0x40,0x06,0x57,
++		0x4E,0x3C,0x0E,0x44,0x3E,0xF0,0xFF,0x00,0x8E,0x10,0x0F,0xDE,0x06,0x40,0x06,0x57,
++		0x6E,0x3C,0x3E,0x3C,0x34,0x90,0x03,0x00,0x12,0x20,0x06,0x40,0x06,0x57,0x76,0x3C,
++		0xB2,0x40,0x02,0xA5,0x28,0x01,0xB2,0x40,0x00,0xA5,0x2C,0x01,0x8F,0x43,0x00,0x00,
++		0x92,0xB3,0x2C,0x01,0xFD,0x2F,0x06,0x40,0x06,0x57,0x48,0x3C,0x29,0x3C,0x24,0x92,
++		0x13,0x20,0x06,0x40,0x06,0x57,0x2B,0x3C,0x05,0x44,0x06,0x40,0x06,0x57,0x4F,0x3C,
++		0x06,0x40,0x06,0x57,0x24,0x3C,0x0E,0x44,0x3E,0xF0,0xFF,0x00,0x8E,0x10,0x05,0xDE,
++		0x06,0x40,0x06,0x57,0x44,0x3C,0x14,0x3C,0x34,0x90,0x05,0x00,0x11,0x20,0x06,0x40,
++		0x06,0x57,0x4C,0x3C,0xB2,0x40,0x40,0xA5,0x28,0x01,0xB2,0x40,0x00,0xA5,0x2C,0x01,
++		0x8F,0x45,0x00,0x00,0x92,0xB3,0x2C,0x01,0xFD,0x2F,0x06,0x40,0x06,0x57,0x1E,0x3C,
++		0xD2,0xB3,0x20,0x00,0xFD,0x2B,0xE2,0xB3,0x20,0x00,0x5E,0x2F,0xFC,0x3F,0xD2,0xB3,
++		0x20,0x00,0xFD,0x2B,0x34,0x40,0x00,0x01,0x07,0x3C,0x04,0x54,0xD2,0xB3,0x20,0x00,
++		0xFD,0x2F,0xD2,0xB3,0x20,0x00,0xFD,0x2B,0xE2,0xB3,0x20,0x00,0x01,0x28,0x14,0x53,
++		0x04,0x93,0xF3,0x37,0x34,0xF0,0xFF,0x00,0x00,0x46,0x30,0x41,0xB2,0x40,0x00,0xA5,
++		0x28,0x01,0xB2,0x40,0x10,0xA5,0x2C,0x01,0xF2,0x40,0x0D,0x00,0x57,0x00,0xD2,0x42,
++		0xFB,0x10,0x57,0x00,0xD2,0x42,0xFA,0x10,0x56,0x00,0x00,0x46,0x30,0x41,0xD2,0xB3,
++		0x20,0x00,0xFD,0x2F,0xE2,0xD3,0x22,0x00,0xD2,0xB3,0x20,0x00,0xFD,0x2B,0xD2,0xB3,
++		0x20,0x00,0xFD,0x2F,0xE2,0xC3,0x22,0x00,0x00,0x46,0x30,0x41,0xF2,0x40,0x0D,0x00,
++		0x57,0x00,0xD2,0x42,0xFF,0x10,0x57,0x00,0xD2,0x42,0xFE,0x10,0x56,0x00,0x00,0x46,
++		0x30,0x41,0x30,0x40,0x88,0xE7,0x30,0x40,0x8C,0xE7,0xFF,0x3F
++	}, {
++		0x52,0xE5
++	}
++};
++
++unsigned short i2c_upgrader_length[2] = { 572, 2};
++#if 0
++@E552
++31 40 00 04 B0 12 5E E5 B0 12 84 E7 B2 40 80 5A
++20 01 F2 40 0D 00 57 00 D2 42 FB 10 57 00 D2 42
++FA 10 56 00 F2 C0 10 00 19 00 F2 D0 10 00 10 00
++F2 C0 10 00 1A 00 B2 40 42 A5 2A 01 F2 F0 F8 00
++22 00 F2 F0 F8 00 21 00 25 43 37 40 BA E5 38 40
++82 E7 39 40 00 02 A9 47 00 00 07 55 09 55 08 97
++FA 23 27 42 30 40 00 02 D2 B3 20 00 FD 2B E2 B3
++20 00 FA 2B D2 B3 20 00 F7 2B E2 B3 20 00 FA 2F
++D2 B3 20 00 FD 2F 06 40 06 57 91 3C 0E 44 7E F0
++FE 00 7E 90 42 00 E8 23 14 B3 21 28 D2 B3 20 00
++FD 2F E2 D3 22 00 D2 B3 20 00 FD 2B 0E 43 09 3C
++D2 B3 20 00 FD 2F E2 D3 22 00 D2 B3 20 00 FD 2B
++1E 53 3E 92 F5 3B D2 B3 20 00 FD 2F E2 C3 22 00
++D2 B3 20 00 FD 2B D2 B3 20 00 FD 2F 61 3C 06 40
++06 57 8D 3C 06 40 06 57 62 3C 06 40 06 57 87 3C
++14 93 03 20 82 43 20 01 53 3C 24 93 13 20 06 40
++06 57 55 3C 0F 44 06 40 06 57 79 3C 06 40 06 57
++4E 3C 0E 44 3E F0 FF 00 8E 10 0F DE 06 40 06 57
++6E 3C 3E 3C 34 90 03 00 12 20 06 40 06 57 76 3C
++B2 40 02 A5 28 01 B2 40 00 A5 2C 01 8F 43 00 00
++92 B3 2C 01 FD 2F 06 40 06 57 48 3C 29 3C 24 92
++13 20 06 40 06 57 2B 3C 05 44 06 40 06 57 4F 3C
++06 40 06 57 24 3C 0E 44 3E F0 FF 00 8E 10 05 DE
++06 40 06 57 44 3C 14 3C 34 90 05 00 11 20 06 40
++06 57 4C 3C B2 40 40 A5 28 01 B2 40 00 A5 2C 01
++8F 45 00 00 92 B3 2C 01 FD 2F 06 40 06 57 1E 3C
++D2 B3 20 00 FD 2B E2 B3 20 00 5E 2F FC 3F D2 B3
++20 00 FD 2B 34 40 00 01 07 3C 04 54 D2 B3 20 00
++FD 2F D2 B3 20 00 FD 2B E2 B3 20 00 01 28 14 53
++04 93 F3 37 34 F0 FF 00 00 46 30 41 B2 40 00 A5
++28 01 B2 40 10 A5 2C 01 F2 40 0D 00 57 00 D2 42
++FB 10 57 00 D2 42 FA 10 56 00 00 46 30 41 D2 B3
++20 00 FD 2F E2 D3 22 00 D2 B3 20 00 FD 2B D2 B3
++20 00 FD 2F E2 C3 22 00 00 46 30 41 F2 40 0D 00
++57 00 D2 42 FF 10 57 00 D2 42 FE 10 56 00 00 46
++30 41 30 40 88 E7 30 40 8C E7 FF 3F 
++@FFFE
++52 E5 
++q
++#endif
+Index: trunk/package/gateworks/src/Makefile
+===================================================================
+--- trunk/package/gateworks/src/Makefile	(revision 0)
++++ trunk/package/gateworks/src/Makefile	(revision 0)
+@@ -0,0 +1,26 @@
++INSTDIR   = $(prefix)/usr/bin
++INSTMODE  = 0755
++INSTOWNER = root
++INSTGROUP = root
++
++all: test_audio gsp_updater
++
++gsp_updater: gsp_updater.o
++	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@
++	$(STRIP) $@
++
++test_audio: test_audio.o
++	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@ -lasound
++	$(STRIP) $@
++
++%.o: %.c
++	$(CC) -c $(CFLAGS) $^ -o $@ -lasound
++
++install: test_audio gsp_updater
++	$(INSTALL) -d $(INSTDIR)
++	$(INSTALL) -m $(INSTMODE) -o $(INSTOWNER) -g $(INSTGROUP) test_audio $(INSTDIR)
++	$(INSTALL) -m $(INSTMODE) -o $(INSTOWNER) -g $(INSTGROUP) gsp_updater $(INSTDIR)
++
++clean:
++	rm -f test_audio gsp_updater *.o core
++
+Index: trunk/package/gateworks/src/gsp_updater.c
+===================================================================
+--- trunk/package/gateworks/src/gsp_updater.c	(revision 0)
++++ trunk/package/gateworks/src/gsp_updater.c	(revision 0)
+@@ -0,0 +1,249 @@
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <errno.h>
++#include "i2c.h"
++#include "i2c_upgrader.h"
++
++#define GSP_UPDATER_REV 5
++
++#define GSP_DEVICE		0x20
++#define GSP_UPDATER		0x21
++#define GSP_PASSWORD 	0x58
++#define GSP_UNLOCK 		0x01
++#define GSP_PROGRAM 	0x02
++#define GSP_ERASE 		0x04
++#define GSP_PUC 			0x06
++
++#define GSP2_PUC			0x1
++#define GSP2_ADDR			0x2
++#define GSP2_ERASE		0x3
++#define GSP2_WORD			0x4
++#define GSP2_PROG			0x5
++
++void parse_data_file(char *filename, unsigned char data[16][16384], short *address, short *length);
++
++void print_banner(void)
++{
++	printf("Gateworks GSP Updater Rev: %i\n", GSP_UPDATER_REV);
++	printf("Copyright (C) 2004-2010, Gateworks Corporation, All Rights Reserved\n");
++	printf("Built %s, %s\n", __TIME__, __DATE__);
++}
++
++void print_help(void)
++{
++	print_banner();
++	printf("\nUsage:\n");
++	printf("\t-f <filename>\tProgram flash device using [filename]\n");
++}
++
++
++int main(int argc, char **argv)
++{
++	unsigned long funcs;
++	unsigned char data[16][16384] = {0};
++	unsigned short address[16];
++	unsigned short length[16];
++	char prog_filename[255];
++	unsigned char buffer[16];
++	signed char ret;
++
++	int i, j, k;
++	int file;
++
++	if (argc == 1) {
++		print_help();
++		exit(1);
++	}
++
++	for (i = 1; i < argc; i++) {
++		if (argv[i][0] == '-') {
++			switch(argv[i][1]) {
++				case 'f':
++					if ((i+1 < argc) && (argv[i+1][0] != '-'))
++					{
++						i++;
++						strcpy(prog_filename, argv[i]);
++					}
++					else
++					{
++						print_help();
++					}
++				break;
++			}
++		}
++	}
++
++	print_banner();
++
++	file = open("/dev/i2c-0", O_RDWR);
++	if (file < 0 && errno == ENOENT) {
++		file = open("/dev/i2c/0", O_RDWR);
++	}
++
++	if (file < 0) {
++		printf("unable to open i2c device\n");
++		exit(1);
++	}
++
++	if (ioctl(file, I2C_FUNCS, &funcs) < 0) {
++		printf("i2c not functional\n");
++		exit(1);
++	}
++
++	if (ioctl(file, I2C_SLAVE, GSP_DEVICE) < 0) {
++		printf("couldn't set gsp address\n");
++		exit(1);
++	}
++
++	ret = i2c_smbus_read_byte_data(file, 14);
++	printf("Current GSP Firmware Rev: %i\n", ret & 0xff);
++
++	if (ioctl(file, I2C_SLAVE, GSP_UPDATER) < 0) {
++		printf("couldn't set gsp_updater address\n");
++		exit(1);
++	}
++
++	i2c_smbus_write_byte_data(file, 0, GSP_PASSWORD | GSP_UNLOCK);
++	ret = i2c_smbus_read_byte_data(file, 0);
++
++	parse_data_file(prog_filename, data, address, length);
++
++	/* ##### Stage 1 Upgrader ##### */
++	// Erase all of main flash
++	for (i = ((address[0] & 0xf000) | 0x400); i < 0xffff; i += 0x200) {
++		buffer[0] = i & 0xff;
++		buffer[1] = (i >> 8) & 0xff;
++		i2c_smbus_write_i2c_block_data(file, 1, 2, buffer);
++		i2c_smbus_write_byte_data(file, 0, GSP_PASSWORD | GSP_ERASE);
++		while (1) {
++			ret = i2c_smbus_read_byte_data(file, 2);
++			if (ret != -1)
++				break;
++			fflush(stdout);
++		}
++		ret = i2c_smbus_read_byte_data(file, 1);
++	}
++
++	// Switch to Programing mode
++	i2c_smbus_write_byte_data(file, 0, GSP_PASSWORD | GSP_PROGRAM);
++
++	for (i = 1; i>= 0; i--) {
++		if (i2c_upgrader_length[i]) {
++			for (j = 0; j < i2c_upgrader_length[i]; j+=2) {
++				// Set starting Address
++				buffer[0] = (i2c_upgrader_address[i] + j) & 0xff;
++				buffer[1] = ((i2c_upgrader_address[i] + j) >> 8) & 0xff;
++				i2c_smbus_write_i2c_block_data(file, 1, 2, buffer);
++				buffer[0] = i2c_upgrader_data[i][j];
++				buffer[1] = i2c_upgrader_data[i][j+1];
++
++				i2c_smbus_write_i2c_block_data(file, 3, 2, buffer);
++				while (1) {
++					ret = i2c_smbus_read_byte_data(file, 2);
++					if (ret != -1)
++						break;
++					fflush(stdout);
++				}
++				if (!i) {
++					printf("Program Upgrader  %2i%%\r", (int)((((double)j / 2) / i2c_upgrader_length[i]) * 100));
++					fflush(stdout);
++				}
++			}
++			if (!i) {
++				printf("Program Upgrader  %i%%\n", 100);
++				fflush(stdout);
++			}
++		}
++	}
++	// Turn off Programing Mode
++	i2c_smbus_write_byte_data(file, 0, GSP_PASSWORD | GSP_UNLOCK);
++	// Reset GSP
++	i2c_smbus_write_byte_data(file, 0, GSP_PASSWORD | GSP_PUC);
++
++
++	/* ##### Stage 2 Upgrader ##### */
++
++	while (1) {
++		ret = i2c_smbus_read_byte(file);
++		if (ret != -1)
++			break;
++	}
++
++	// Erase all of main flash
++	for (i = (address[0] & 0xf000); i < 0xffff; i += 0x200) {
++		buffer[0] = i & 0xff;
++		buffer[1] = (i >> 8) & 0xff;
++		i2c_smbus_write_i2c_block_data(file, GSP2_ADDR, 2, buffer);
++		i2c_smbus_write_byte(file, GSP2_ERASE);
++		while (1) {
++			ret = i2c_smbus_read_byte(file);
++			if (ret != -1)
++				break;
++		}
++	}
++
++	for (i = 15; i>= 0; i--) {
++		if (length[i]) {
++			for (j = 0; j < length[i]; j+=2) {
++				// Set starting Address
++				buffer[0] = (address[i] + j) & 0xff;
++				buffer[1] = ((address[i] + j) >> 8) & 0xff;
++				i2c_smbus_write_i2c_block_data(file, GSP2_ADDR, 2, buffer);
++				buffer[0] = data[i][j];
++				buffer[1] = data[i][j+1];
++
++				i2c_smbus_write_i2c_block_data(file, GSP2_WORD, 2, buffer);
++				i2c_smbus_write_byte(file, GSP2_PROG);
++				while (1) {
++					ret = i2c_smbus_read_byte(file);
++					if (ret != -1)
++						break;
++					fflush(stdout);
++				}
++				printf("MSP Prg B%i   %2i%%\r", i, (int)((((double)j / 2) / length[i]) * 100));
++				fflush(stdout);
++			}
++			printf("MSP Prg B%i  %i%%\n", i, 100);
++			fflush(stdout);
++		}
++	}
++	i2c_smbus_write_byte(file, GSP2_PUC);
++
++	exit(0);
++}
++
++void parse_data_file(char *filename, unsigned char data[16][16384], short *address, short *length)
++{
++	FILE *fd;
++	char line[1024];
++	char temp[64];
++	short address_loc = -1;
++	char t[16][4];
++	short temp_word = 0;
++	int i = 0, j = 0, num_scan = 0;
++
++	memset(t, 0, 16*4);
++	memset(length, 0, 16*2);
++
++	fd = fopen(filename, "r");
++	while (fgets(line, 1024, fd)) {
++		if (strncmp(line, "@", 1) == 0) {
++			j = 0;
++			address_loc++;
++			memcpy(temp, &line[1], 5);
++			address[address_loc] = strtol(temp, 0, 16);
++		} else if (strncmp(line, "q", 1) != 0) {
++			num_scan = sscanf(line, "%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s",
++				t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9], t[10], t[11], t[12], t[13], t[14], t[15]);
++			for (i = 0; i < num_scan; i++) {
++				temp_word = strtol(t[i], 0, 16);
++				data[address_loc][j++] = temp_word;
++				length[address_loc]++;
++			}
++		}
++	}
++}
+Index: trunk/package/gateworks/Makefile
+===================================================================
+--- trunk/package/gateworks/Makefile	(revision 0)
++++ trunk/package/gateworks/Makefile	(revision 0)
+@@ -0,0 +1,45 @@
++#
++# Copyright (C) 2008 OpenWrt.org
++#
++# This is free software, licensed under the GNU General Public License v2.
++# See /LICENSE for more information.
++#
++
++include $(TOPDIR)/rules.mk
++include $(INCLUDE_DIR)/kernel.mk
++
++PKG_NAME:=gateworks
++PKG_RELEASE:=1
++PKG_VERSION:=1.0
++
++include $(INCLUDE_DIR)/package.mk
++
++define Package/gateworks
++  SECTION:=base
++  CATEGORY:=Base system
++	DEPENDS:=+alsa-lib +math
++  TITLE:=Gateworks Supplied Tools
++endef
++
++define Package/gateworks/description
++	Tools used by Gateworks for Testing and Development
++endef
++
++define Build/Prepare
++	mkdir -p $(PKG_BUILD_DIR)
++	$(CP) ./src/* $(PKG_BUILD_DIR)/
++endef
++
++#define Build/Compile
++#	$(call Build/Configure/Default)
++#	$(MAKE) -C $(PKG_BUILD_DIR) \
++#		$(TARGET_CONFIGURE_OPTS) CFLAGS="$(TARGET_CFLAGS)"
++#endef
++
++define Package/gateworks/install
++	$(INSTALL_DIR) $(1)/usr/bin
++	$(INSTALL_BIN) $(PKG_BUILD_DIR)/test_audio $(1)/usr/bin/
++	$(CP) ./files/* $(1)
++endef
++
++$(eval $(call BuildPackage,gateworks))
+Index: trunk/package/madwifi/Makefile
+===================================================================
+--- trunk/package/madwifi/Makefile	(revision 27590)
++++ trunk/package/madwifi/Makefile	(working copy)
+@@ -225,6 +225,10 @@
+ 		$(PKG_BUILD_DIR)/hal/public/*.inc
+ 	$(SED) 's,march=armv4,march=armv5te,' \
+ 		$(PKG_BUILD_DIR)/hal/public/xscale*.inc
++	$(SED) 's,march=armv6j,march=armv6k,' \
++		$(PKG_BUILD_DIR)/hal/public/arm11*.inc
++	$(SED) 's,mtune=arm1136j-s,mtune=mpcore,' \
++		$(PKG_BUILD_DIR)/hal/public/arm11*.inc
+ endef
+ 
+ ifeq ($(findstring AHB,$(BUS)),AHB)

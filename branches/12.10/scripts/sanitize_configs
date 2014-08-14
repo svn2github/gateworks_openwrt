@@ -1,0 +1,26 @@
+#!/bin/sh
+
+# create sanitized config files (openwrt and kernel) for easy comparison
+#  - strips out blank lines
+#  - strips out comments
+#  - sorts alphabetically
+
+TARGETS="cns3xxx ixp4xx davinci"
+DIR=.
+[ -d "$1" ] && DIR=$1
+
+sanitize_config() {
+	sort $1 | egrep -v '^$|^#'
+}
+
+if [ -f "$1" ]; then
+	sanitize_config $1
+	exit 0
+fi  
+
+mkdir -p $DIR/tmp
+for i in $TARGETS; do
+	echo $i
+	sanitize_config $DIR/config/$i/.config > $DIR/tmp/$i-config.sort-clean
+	sanitize_config $DIR/trunk/target/linux/$i/config-default > $DIR/tmp/$i-kconfig.sort-clean
+done

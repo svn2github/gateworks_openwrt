@@ -1,0 +1,3911 @@
+Index: trunk/target/linux/cns3xxx/base-files/lib/cns3xxx.sh
+===================================================================
+--- trunk/target/linux/cns3xxx/base-files/lib/cns3xxx.sh	(revision 0)
++++ trunk/target/linux/cns3xxx/base-files/lib/cns3xxx.sh	(working copy)
+@@ -0,0 +1,22 @@
++#!/bin/sh
++#
++# Copyright (C) 2009 OpenWrt.org
++#
++
++cns3xxx_board_name() {
++        local machine
++        local name
++
++        machine=$(awk 'BEGIN{FS="[ \t]+:[ \t]"} /Hardware/ {print $2}' /proc/cpuinfo)
++
++        case "$machine" in
++		"Gateworks Corporation Laguna"*)
++			name="laguna"
++			;;
++		*)
++			name="generic";
++			;;
++	esac
++	
++	echo $name
++}
+Index: trunk/target/linux/cns3xxx/base-files/lib/upgrade/platform.sh
+===================================================================
+--- trunk/target/linux/cns3xxx/base-files/lib/upgrade/platform.sh	(revision 0)
++++ trunk/target/linux/cns3xxx/base-files/lib/upgrade/platform.sh	(working copy)
+@@ -0,0 +1,121 @@
++. /lib/cns3xxx.sh
++
++RAMFS_COPY_DATA="/lib/cns3xxx.sh"
++
++CI_BLKSZ=65536
++
++platform_find_partitions() {
++	local first dev size erasesize name
++	while read dev size erasesize name; do
++		name=${name#'"'}; name=${name%'"'}
++		case "$name" in
++			vmlinux.bin.l7|kernel|linux|rootfs)
++				if [ -z "$first" ]; then
++					first="$name"
++				else
++					echo "$erasesize:$first:$name"
++					break
++				fi
++			;;
++		esac
++	done < /proc/mtd
++}
++
++platform_find_kernelpart() {
++	local part
++	for part in "${1%:*}" "${1#*:}"; do
++		case "$part" in
++			vmlinux.bin.l7|kernel|linux)
++				echo "$part"
++				break
++			;;
++		esac
++	done
++}
++
++platform_do_upgrade_combined() {
++	local partitions=$(platform_find_partitions)
++	local kernelpart=$(platform_find_kernelpart "${partitions#*:}")
++	local erase_size=$((0x${partitions%%:*})); partitions="${partitions#*:}"
++	local kern_length=0x$(dd if="$1" bs=2 skip=1 count=4 2>/dev/null)
++	local kern_blocks=$(($kern_length / $CI_BLKSZ))
++	local root_blocks=$((0x$(dd if="$1" bs=2 skip=5 count=4 2>/dev/null) / $CI_BLKSZ))
++
++	v "platform_do_upgrade_combined"
++	v "partitions=$partitions"
++	v "kernelpart=$kernelpart"
++	v "erase_size=$erase_size" 
++	v "kern_blocks=$kern_blocks"
++	v "root_blocks=$root_blocks"
++
++	if [ -n "$partitions" ] && [ -n "$kernelpart" ] && \
++	   [ ${kern_blocks:-0} -gt 0 ] && \
++	   [ ${root_blocks:-0} -gt ${kern_blocks:-0} ] && \
++	   [ ${erase_size:-0} -gt 0 ];
++	then
++		local append=""
++		[ -f "$CONF_TAR" -a "$SAVE_CONFIG" -eq 1 ] && append="-j $CONF_TAR"
++
++		dd if="$1" bs=$CI_BLKSZ skip=1 count=$kern_blocks 2>/dev/null | mtd write - kernel
++		dd if="$1" bs=$CI_BLKSZ skip=$((1+$kern_blocks)) count=$root_blocks 2>/dev/null | \
++			mtd -r $append write - rootfs
++
++	fi
++}
++
++platform_check_image() {
++	local board=$(cns3xxx_board_name)
++	local magic="$(get_magic_word "$1")"
++	local magic_long="$(get_magic_long "$1")"
++
++	[ "$ARGC" -gt 1 ] && return 1
++
++	case "$board" in
++	laguna)
++		[ "$magic" != "4349" ] && {
++			echo "Invalid image. Use *-sysupgrade.bin files on this board"
++			return 1
++		}
++
++		local md5_img=$(dd if="$1" bs=2 skip=9 count=16 2>/dev/null)
++		local md5_chk=$(dd if="$1" bs=$CI_BLKSZ skip=1 2>/dev/null | md5sum -); md5_chk="${md5_chk%% *}"
++
++		if [ -n "$md5_img" -a -n "$md5_chk" ] && [ "$md5_img" = "$md5_chk" ]; then
++			return 0
++		else
++			echo "Invalid image. Contents do not match checksum (image:$md5_img calculated:$md5_chk)"
++			return 1
++		fi
++		return 0
++		;;
++	esac
++
++	echo "Sysupgrade is not yet supported on $board."
++	return 1
++}
++
++platform_do_upgrade() {
++	local board=$(cns3xxx_board_name)
++
++	v "board=$board"
++	case "$board" in
++	laguna)
++		platform_do_upgrade_combined "$ARGV"
++		;;
++	*)
++		default_do_upgrade "$ARGV"
++		;;
++	esac
++}
++
++disable_watchdog() {
++	v "killing watchdog"
++	killall watchdog
++	( ps | grep -v 'grep' | grep '/dev/watchdog' ) && {
++		echo 'Could not disable watchdog'
++		return 1
++	}
++}
++
++# CONFIG_WATCHDOG_NOWAYOUT=y - can't kill watchdog unless kernel cmdline has a mpcore_wdt.nowayout=0
++#append sysupgrade_pre_upgrade disable_watchdog
+Index: trunk/target/linux/cns3xxx/config-default
+===================================================================
+--- trunk/target/linux/cns3xxx/config-default	(revision 27590)
++++ trunk/target/linux/cns3xxx/config-default	(working copy)
+@@ -18,11 +18,14 @@
+ CONFIG_ATA_VERBOSE_ERROR=y
+ CONFIG_BLK_DEV_RAM=y
+ CONFIG_BLK_DEV_RAM_COUNT=2
+-CONFIG_BLK_DEV_RAM_SIZE=32768
++CONFIG_BLK_DEV_RAM_SIZE=16384
+ CONFIG_BLK_DEV_SD=y
+-CONFIG_CACHE_L2X0=y
++# CONFIG_BUG is not set
++# CONFIG_CACHE_L2X0 is not set
++CONFIG_CC_OPTIMIZE_FOR_SIZE=y
+ CONFIG_CNS3XXX_ETH=y
+ CONFIG_CPU_32v6=y
++CONFIG_CPU_32v6K=y
+ CONFIG_CPU_ABRT_EV6=y
+ # CONFIG_CPU_BPREDICT_DISABLE is not set
+ CONFIG_CPU_CACHE_V6=y
+@@ -34,22 +37,18 @@
+ CONFIG_CPU_HAS_PMU=y
+ # CONFIG_CPU_ICACHE_DISABLE is not set
+ CONFIG_CPU_PABRT_V6=y
++CONFIG_CPU_RMAP=y
+ CONFIG_CPU_TLB_V6=y
+-CONFIG_CPU_USE_DOMAINS=y
+-CONFIG_CPU_V6=y
+-CONFIG_DEBUG_BUGVERBOSE=y
++CONFIG_CPU_V6K=y
++# CONFIG_DEBUG_FS is not set
+ # CONFIG_DEBUG_USER is not set
+ CONFIG_DECOMPRESS_GZIP=y
+-CONFIG_DMA_CACHE_RWFO=y
+-# CONFIG_DWC_DEBUG is not set
+-# CONFIG_DWC_DEVICE_ONLY is not set
+-# CONFIG_DWC_HOST_ONLY is not set
+-CONFIG_DWC_OTG_MODE=y
+ CONFIG_EEPROM_AT24=y
++CONFIG_FIQ=y
+ CONFIG_FRAME_POINTER=y
+ # CONFIG_FSNOTIFY is not set
+-CONFIG_GENERIC_ATOMIC64=y
+ CONFIG_GENERIC_CLOCKEVENTS=y
++CONFIG_GENERIC_CLOCKEVENTS_BROADCAST=y
+ CONFIG_GENERIC_CLOCKEVENTS_BUILD=y
+ CONFIG_GENERIC_FIND_LAST_BIT=y
+ CONFIG_GENERIC_GPIO=y
+@@ -64,6 +63,8 @@
+ CONFIG_HAS_IOPORT=y
+ CONFIG_HAVE_AOUT=y
+ CONFIG_HAVE_ARCH_KGDB=y
++CONFIG_HAVE_ARM_SCU=y
++CONFIG_HAVE_ARM_TWD=y
+ CONFIG_HAVE_C_RECORDMCOUNT=y
+ CONFIG_HAVE_DMA_API_DEBUG=y
+ CONFIG_HAVE_DYNAMIC_FTRACE=y
+@@ -77,7 +78,6 @@
+ CONFIG_HAVE_KERNEL_GZIP=y
+ CONFIG_HAVE_KERNEL_LZMA=y
+ CONFIG_HAVE_KERNEL_LZO=y
+-CONFIG_HAVE_LATENCYTOP_SUPPORT=y
+ CONFIG_HAVE_MEMBLOCK=y
+ CONFIG_HAVE_OPROFILE=y
+ CONFIG_HAVE_PERF_EVENTS=y
+@@ -92,6 +92,8 @@
+ CONFIG_I2C_CHARDEV=y
+ CONFIG_I2C_CNS3XXX=y
+ # CONFIG_I2C_PXA_PCI is not set
++CONFIG_IKCONFIG=y
++CONFIG_IKCONFIG_PROC=y
+ CONFIG_INITRAMFS_SOURCE=""
+ CONFIG_KERNEL_GZIP=y
+ # CONFIG_KERNEL_LZMA is not set
+@@ -113,25 +115,23 @@
+ CONFIG_MPCORE_WATCHDOG=y
+ CONFIG_MTD_M25P80=y
+ CONFIG_MTD_PHYSMAP=y
++CONFIG_MUTEX_SPIN_ON_OWNER=y
+ CONFIG_NEED_DMA_MAP_STATE=y
+-CONFIG_NEED_PER_CPU_KM=y
+ CONFIG_NLS=y
+ CONFIG_NR_CPUS=2
+-CONFIG_OUTER_CACHE=y
+-CONFIG_OUTER_CACHE_SYNC=y
+ CONFIG_PAGEFLAGS_EXTENDED=y
+-CONFIG_PAGE_OFFSET=0xC0000000
++CONFIG_PAGE_OFFSET=0x80000000
+ CONFIG_PCI=y
+ CONFIG_PCI_DOMAINS=y
+ CONFIG_PERF_USE_VMALLOC=y
+ CONFIG_PHYLIB=y
+-CONFIG_PL310_ERRATA_588369=y
+-CONFIG_PL310_ERRATA_727915=y
+ # CONFIG_PREEMPT_RCU is not set
+ # CONFIG_QUOTACTL is not set
+ CONFIG_RAID_ATTRS=y
+ CONFIG_RD_GZIP=y
+ # CONFIG_RD_LZMA is not set
++CONFIG_RFS_ACCEL=y
++CONFIG_RPS=y
+ CONFIG_RTC_CLASS=y
+ CONFIG_RTC_DRV_DS1672=y
+ CONFIG_SATA_AHCI=y
+@@ -142,8 +142,9 @@
+ # CONFIG_SDIO_UART is not set
+ CONFIG_SENSORS_AD7418=y
+ CONFIG_SENSORS_GSP=y
+-CONFIG_SERIAL_8250_NR_UARTS=3
+-CONFIG_SERIAL_8250_RUNTIME_UARTS=3
++CONFIG_SERIAL_8250_NR_UARTS=20
++CONFIG_SERIAL_8250_PCI=y
++CONFIG_SERIAL_8250_RUNTIME_UARTS=20
+ CONFIG_SMP=y
+ CONFIG_SMP_ON_UP=y
+ CONFIG_SPI=y
+@@ -152,25 +153,37 @@
+ # CONFIG_SPI_GPIO is not set
+ CONFIG_SPI_MASTER=y
+ # CONFIG_STAGING is not set
++CONFIG_STOP_MACHINE=y
+ CONFIG_SYS_SUPPORTS_APM_EMULATION=y
++CONFIG_TREE_RCU=y
+ CONFIG_UID16=y
+ CONFIG_USB=y
+ CONFIG_USB_ANNOUNCE_NEW_DEVICES=y
+ # CONFIG_USB_CDC_COMPOSITE is not set
+ CONFIG_USB_CNS3XXX_EHCI=y
+ CONFIG_USB_CNS3XXX_OHCI=y
+-CONFIG_USB_DEBUG=y
+-CONFIG_USB_DWC_OTG=y
+ CONFIG_USB_EHCI_HCD=y
+ # CONFIG_USB_ETH is not set
+ # CONFIG_USB_FILE_STORAGE is not set
+ # CONFIG_USB_FUNCTIONFS is not set
++CONFIG_USB_FUSB300=y
+ CONFIG_USB_GADGET=y
+ # CONFIG_USB_GADGETFS is not set
++# CONFIG_USB_GADGET_AMD5536UDC is not set
++# CONFIG_USB_GADGET_CI13XXX_PCI is not set
+ # CONFIG_USB_GADGET_DEBUG_FILES is not set
+-# CONFIG_USB_GADGET_DEBUG_FS is not set
+-# CONFIG_USB_GADGET_DUALSPEED is not set
++CONFIG_USB_GADGET_DUALSPEED=y
++# CONFIG_USB_GADGET_DUMMY_HCD is not set
++# CONFIG_USB_GADGET_EG20T is not set
++CONFIG_USB_GADGET_FUSB300=y
++# CONFIG_USB_GADGET_GOKU is not set
++# CONFIG_USB_GADGET_LANGWELL is not set
++# CONFIG_USB_GADGET_M66592 is not set
++# CONFIG_USB_GADGET_NET2280 is not set
++# CONFIG_USB_GADGET_PXA_U2O is not set
++# CONFIG_USB_GADGET_R8A66597 is not set
+ CONFIG_USB_GADGET_SELECTED=y
++# CONFIG_USB_GADGET_USB3380 is not set
+ CONFIG_USB_GADGET_VBUS_DRAW=2
+ # CONFIG_USB_G_DBGP is not set
+ # CONFIG_USB_G_HID is not set
+@@ -183,10 +196,16 @@
+ CONFIG_USB_SUPPORT=y
+ # CONFIG_USB_UHCI_HCD is not set
+ # CONFIG_USB_ZERO is not set
++CONFIG_USE_GENERIC_SMP_HELPERS=y
+ CONFIG_VECTORS_BASE=0xffff0000
+ CONFIG_VFP=y
++CONFIG_VMSPLIT_2G=y
++# CONFIG_VMSPLIT_3G is not set
+ CONFIG_WATCHDOG_NOWAYOUT=y
++CONFIG_XPS=y
+ CONFIG_XZ_DEC=y
+ CONFIG_ZBOOT_ROM_BSS=0
+ CONFIG_ZBOOT_ROM_TEXT=0
+ CONFIG_ZONE_DMA_FLAG=0
++# CONFIG_USB_MIDI_GADGET is not set
++# CONFIG_USB_G_WEBCAM is not set
+Index: trunk/target/linux/cns3xxx/generic/config-default
+===================================================================
+--- trunk/target/linux/cns3xxx/generic/config-default	(revision 0)
++++ trunk/target/linux/cns3xxx/generic/config-default	(working copy)
+@@ -0,0 +1,6 @@
++CONFIG_USB_DWC_OTG=y
++# CONFIG_DWC_DEBUG is not set
++# CONFIG_DWC_DEVICE_ONLY is not set
++# CONFIG_DWC_HOST_ONLY is not set
++CONFIG_DWC_OTG_MODE=y
++# CONFIG_USB_GADGET_DEBUG_FS is not set
+Index: trunk/target/linux/cns3xxx/generic/target.mk
+===================================================================
+--- trunk/target/linux/cns3xxx/generic/target.mk	(revision 0)
++++ trunk/target/linux/cns3xxx/generic/target.mk	(working copy)
+@@ -0,0 +1,8 @@
++BOARDNAME:=Generic
++
++DEFAULT_PACKAGES+= 
++
++define Target/Description
++	Build firmware images for Gateworks Laguna based boards
++endef
++
+Index: trunk/target/linux/cns3xxx/gw2383/config-default
+===================================================================
+--- trunk/target/linux/cns3xxx/gw2383/config-default	(revision 0)
++++ trunk/target/linux/cns3xxx/gw2383/config-default	(working copy)
+@@ -0,0 +1,10 @@
++CONFIG_USB_GADGET=m
++CONFIG_USB_GADGET_DUALSPEED=y
++CONFIG_USB_GADGET_SELECTED=y
++CONFIG_USB_GADGET_SUPERSPEED=y
++CONFIG_USB_GADGET_USB3380=y
++CONFIG_USB_GADGET_VBUS_DRAW=2
++CONFIG_USB_USB3380=m
++CONFIG_USB_ZERO=m
++CONFIG_USB_GADGET_DEBUG_FS=y
++CONFIG_PLX_LOOPHOST_TEST=y
+Index: trunk/target/linux/cns3xxx/gw2383/target.mk
+===================================================================
+--- trunk/target/linux/cns3xxx/gw2383/target.mk	(revision 0)
++++ trunk/target/linux/cns3xxx/gw2383/target.mk	(working copy)
+@@ -0,0 +1,11 @@
++BOARDNAME:=GW2383
++
++FEATURES+=usbgadget
++
++DEFAULT_PACKAGES+= kmod-usb-gadget-usb3380 kmod-usb-gadget-eth
++
++define Target/Description
++	Build firmware images for Gateworks Laguna GW2383 with USB Device Controller
++  support
++endef
++
+Index: trunk/target/linux/cns3xxx/image/Makefile
+===================================================================
+--- trunk/target/linux/cns3xxx/image/Makefile	(revision 27590)
++++ trunk/target/linux/cns3xxx/image/Makefile	(working copy)
+@@ -15,21 +15,32 @@
+ 	cp $(KDIR)/uImage $(BIN_DIR)/openwrt-$(BOARD)-uImage
+ endef
+ 
++# Build sysupgrade image
++define BuildFirmware/Generic
++	dd if=$(KDIR)/uImage of=$(KDIR)/uImage.pad bs=64k conv=sync; \
++	dd if=$(KDIR)/root.$(1) of=$(KDIR)/root.$(1).pad bs=128k conv=sync; \
++	sh $(TOPDIR)/scripts/combined-image.sh \
++		$(KDIR)/uImage.pad \
++		$(KDIR)/root.$(1).pad \
++		$(BIN_DIR)/$(IMG_PREFIX)-$(patsubst jffs2-%,jffs2,$(patsubst squashfs-%,squashfs,$(1)))-sysupgrade.bin
++endef
++
+ define Image/Build
+ 	$(call Image/Build/$(1),$(1))
++	$(call BuildFirmware/Generic,$(1))
+ endef
+ 
+ define Image/Build/jffs2-64k
+-	dd if=$(KDIR)/root.$(1) of=$(BIN_DIR)/openwrt-$(BOARD)-$(1).img bs=65536 conv=sync
++	dd if=$(KDIR)/root.$(1) of=$(BIN_DIR)/openwrt-$(BOARD)-$(1).img bs=64k conv=sync
+ endef
+ 
+ define Image/Build/jffs2-128k
+-	dd if=$(KDIR)/root.$(1) of=$(BIN_DIR)/openwrt-$(BOARD)-$(1).img bs=131072 conv=sync
++	dd if=$(KDIR)/root.$(1) of=$(BIN_DIR)/openwrt-$(BOARD)-$(1).img bs=128k conv=sync
+ endef
+ 
+ define Image/Build/squashfs
+-	$(call prepare_generic_squashfs,$(KDIR)/root.squashfs)
+-	dd if=$(KDIR)/root.$(1) of=$(BIN_DIR)/openwrt-$(BOARD)-$(1).img bs=131072 conv=sync
++	$(call prepare_generic_squashfs,$(KDIR)/root.$(1))
++	dd if=$(KDIR)/root.$(1) of=$(BIN_DIR)/openwrt-$(BOARD)-$(1).img bs=128k conv=sync
+ endef
+ 
+ $(eval $(call BuildImage))
+Index: trunk/target/linux/cns3xxx/Makefile
+===================================================================
+--- trunk/target/linux/cns3xxx/Makefile	(revision 27590)
++++ trunk/target/linux/cns3xxx/Makefile	(working copy)
+@@ -9,9 +9,10 @@
+ ARCH:=arm
+ BOARD:=cns3xxx
+ BOARDNAME:=Cavium Networks Econa CNS3xxx
+-FEATURES:=squashfs fpu gpio
++FEATURES:=squashfs fpu gpio usb pcie
+ CFLAGS:=-Os -pipe -march=armv6k -mtune=mpcore -mfloat-abi=softfp -mfpu=vfp -fno-caller-saves
+ MAINTAINER:=Imre Kaloz <kaloz@openwrt.org>
++SUBTARGETS=generic gw2383
+ 
+ LINUX_VERSION:=2.6.39.2
+ 
+Index: trunk/target/linux/cns3xxx/patches/049-cns3xxx_smp_support.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/049-cns3xxx_smp_support.patch	(revision 27590)
++++ trunk/target/linux/cns3xxx/patches/049-cns3xxx_smp_support.patch	(working copy)
+@@ -221,7 +221,7 @@
+ +}
+ --- /dev/null
+ +++ b/arch/arm/mach-cns3xxx/platsmp.c
+-@@ -0,0 +1,168 @@
++@@ -0,0 +1,176 @@
+ +/*
+ + *  linux/arch/arm/mach-cns3xxx/platsmp.c
+ + *
+@@ -253,6 +253,9 @@
+ +
+ +extern void cns3xxx_secondary_startup(void);
+ +
+++#define SCU_CPU_STATUS 0x08
+++static void __iomem *scu_base;
+++
+ +/*
+ + * control for which core is the next to come out of the secondary
+ + * boot "holding pen"
+@@ -272,11 +275,6 @@
+ +	outer_clean_range(__pa(&pen_release), __pa(&pen_release + 1));
+ +}
+ +
+-+static void __iomem *scu_base_addr(void)
+-+{
+-+	return (void __iomem *)(CNS3XXX_TC11MP_SCU_BASE_VIRT);
+-+}
+-+
+ +static DEFINE_SPINLOCK(boot_lock);
+ +
+ +void __cpuinit platform_secondary_init(unsigned int cpu)
+@@ -350,10 +348,10 @@
+ + */
+ +void __init smp_init_cpus(void)
+ +{
+-+	void __iomem *scu_base = scu_base_addr();
+ +	unsigned int i, ncores;
+ +
+-+	ncores = scu_base ? scu_get_core_count(scu_base) : 1;
+++	scu_base = (void __iomem *) CNS3XXX_TC11MP_SCU_BASE_VIRT;
+++	ncores = scu_get_core_count(scu_base);
+ +
+ +	/* sanity check */
+ +	if (ncores > NR_CPUS) {
+@@ -371,15 +369,25 @@
+ +void __init platform_smp_prepare_cpus(unsigned int max_cpus)
+ +{
+ +	int i;
+++	unsigned int status;
+ +
+ +	/*
+ +	 * Initialise the present map, which describes the set of CPUs
+ +	 * actually populated at the present time.
+++	 *
+++	 * for CNS3xxx SCU_CPU_STATUS is more reliable than SCU_CONFIGURATION
+++	 * used in arch/arm/kernel/smp_scu.c
+ +	 */
+-+	for (i = 0; i < max_cpus; i++)
+-+		set_cpu_present(i, true);
+++	status = __raw_readl(scu_base + SCU_CPU_STATUS);
+++	for (i = 0; i < max_cpus; i++) {
+++		if (((status >> (i*2)) & 0x3) == 0)
+++			set_cpu_present(i, true);
+++	}
+ +
+-+	scu_enable(scu_base_addr());
+++	/*
+++	 * enable SCU
+++	 */
+++	scu_enable(scu_base);
+ +
+ +	/*
+ +	 * Write the address of secondary startup into the
+Index: trunk/target/linux/cns3xxx/patches/050-cns3xxx_i2c_controller.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/050-cns3xxx_i2c_controller.patch	(revision 27590)
++++ trunk/target/linux/cns3xxx/patches/050-cns3xxx_i2c_controller.patch	(working copy)
+@@ -31,7 +31,7 @@
+  
+ --- /dev/null
+ +++ b/drivers/i2c/busses/i2c-cns3xxx.c
+-@@ -0,0 +1,387 @@
++@@ -0,0 +1,395 @@
+ +/*
+ + * Cavium CNS3xxx I2C Host Controller
+ + *
+@@ -97,13 +97,15 @@
+ +#define STATE_ERROR		2
+ +
+ +struct cns3xxx_i2c {
+-+	void __iomem *base;
+-+	wait_queue_head_t wait;
+-+	struct i2c_adapter adap;
+-+	struct i2c_msg *msg;
+-+	int state;		/* see STATE_ */
+-+	int rd_wr_len;
+-+	u8 *buf;
+++	struct device		*dev;
+++	void __iomem		*base;		/* virtual */
+++	wait_queue_head_t	wait;
+++	struct i2c_adapter	adap;
+++	struct i2c_msg		*msg;
+++	u8			state;		/* see STATE_ */
+++	u8			error;		/* see TWI_STATUS register */
+++	int			rd_wr_len;
+++	u8			*buf;
+ +};
+ +
+ +static u32 cns3xxx_i2c_func(struct i2c_adapter *adap)
+@@ -184,14 +186,18 @@
+ +
+ +		// Start the Transfer
+ +		i2c->state = 0;		// Clear out the State
+++		i2c->error = 0;
+ +		I2C_CONTROLLER_REG |= (1 << 6);
+ +
+ +		if (wait_event_timeout(i2c->wait, (i2c->state == STATE_ERROR) ||
+ +				(i2c->state == STATE_DONE), TWI_TIMEOUT)) {
+ +			if (i2c->state == STATE_ERROR) {
+-+				return -EIO;
+++				dev_dbg(i2c->dev, "controller error: 0x%2x", i2c->error);
+++				return -EAGAIN; // try again
+ +			}
+ +		} else {
+++			dev_err(i2c->dev, "controller timed out "
+++				"waiting for start condition to finish\n");
+ +			return -ETIMEDOUT;
+ +		}
+ +	}
+@@ -272,6 +278,7 @@
+ +
+ +	if (stat & I2C_BUS_ERROR_FLAG) {
+ +		i2c->state = STATE_ERROR;
+++		i2c->error = (I2C_INTERRUPT_STATUS_REG & 0xff00)>>8;
+ +	} else {
+ +		if (i2c->msg->flags & I2C_M_RD) {
+ +			for (i = 0; i <= i2c->rd_wr_len; i++)
+@@ -314,6 +321,7 @@
+ +		goto request_mem_failed;
+ +	}
+ +
+++	i2c->dev = &pdev->dev;
+ +	i2c->base = ioremap(res->start, res->end - res->start + 1);
+ +	if (!i2c->base) {
+ +		dev_err(&pdev->dev, "Unable to map registers\n");
+Index: trunk/target/linux/cns3xxx/patches/051-cns3xxx_gigabit.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/051-cns3xxx_gigabit.patch	(revision 27590)
++++ trunk/target/linux/cns3xxx/patches/051-cns3xxx_gigabit.patch	(working copy)
+@@ -27,7 +27,7 @@
+  obj-$(CONFIG_AMD8111_ETH) += amd8111e.o
+ --- /dev/null
+ +++ b/drivers/net/cns3xxx_eth.c
+-@@ -0,0 +1,1269 @@
++@@ -0,0 +1,1311 @@
+ +/*
+ + * Cavium CNS3xxx Gigabit driver for Linux
+ + *
+@@ -60,7 +60,7 @@
+ +#define RX_POOL_ALLOC_SIZE (sizeof(struct rx_desc) * RX_DESCS)
+ +#define TX_POOL_ALLOC_SIZE (sizeof(struct tx_desc) * TX_DESCS)
+ +#define REGS_SIZE 336
+-+#define MAX_MRU	9500
+++#define MAX_MRU (1536 + SKB_DMA_REALIGN)
+ +
+ +#define NAPI_WEIGHT 64
+ +
+@@ -81,7 +81,12 @@
+ +#define TCP_CHECKSUM 0x00010000
+ +
+ +/* Port Config Defines */
+++#define PORT_BP_ENABLE 0x00020000
+ +#define PORT_DISABLE 0x00040000
+++#define PORT_LEARN_DIS 0x00080000
+++#define PORT_BLOCK_STATE 0x00100000
+++#define PORT_BLOCK_MODE 0x00200000
+++
+ +#define PROMISC_OFFSET 29
+ +
+ +/* Global Config Defines */
+@@ -103,6 +108,14 @@
+ +#define QUEUE_THRESHOLD 0x000000f0
+ +#define CLR_FS_STATE 0x80000000
+ +
+++/* Interrupt Status Defines */
+++#define MAC0_STATUS_CHANGE 0x00004000
+++#define MAC1_STATUS_CHANGE 0x00008000
+++#define MAC2_STATUS_CHANGE 0x00010000
+++#define MAC0_RX_ERROR 0x00100000
+++#define MAC1_RX_ERROR 0x00200000
+++#define MAC2_RX_ERROR 0x00400000
+++
+ +struct tx_desc
+ +{
+ +	u32 sdp; /* segment data pointer */
+@@ -258,6 +271,8 @@
+ +	u32 fs_dma_ctrl1;
+ +	u32 fs_desc_ptr1;
+ +	u32 fs_desc_base_addr1;
+++	u32 __res7[109];
+++	u32 mac_counter0[13];
+ +};
+ +
+ +struct _tx_ring {
+@@ -265,6 +280,7 @@
+ +	dma_addr_t phys_addr;
+ +	struct tx_desc *cur_addr;
+ +	struct sk_buff *buff_tab[TX_DESCS];
+++	unsigned int phys_tab[TX_DESCS];
+ +	u32 free_index;
+ +	u32 count_index;
+ +	u32 cur_index;
+@@ -277,6 +293,7 @@
+ +	dma_addr_t phys_addr;
+ +	struct rx_desc *cur_addr;
+ +	struct sk_buff *buff_tab[RX_DESCS];
+++	unsigned int phys_tab[RX_DESCS];
+ +	u32 cur_index;
+ +	u32 alloc_index;
+ +	int alloc_count;
+@@ -289,7 +306,6 @@
+ +	struct cns3xxx_plat_info *plat;
+ +	struct _tx_ring *tx_ring;
+ +	struct _rx_ring *rx_ring;
+-+	u32 mtu;
+ +};
+ +
+ +struct port {
+@@ -298,16 +314,14 @@
+ +	struct sw *sw;
+ +	int id;			/* logical port ID */
+ +	int speed, duplex;
+-+	u32 mtu;
+ +};
+ +
+ +static spinlock_t mdio_lock;
+-+static spinlock_t tx_lock;
+-+static spinlock_t stat_lock;
+++static DEFINE_RWLOCK(tx_lock);
+ +static struct switch_regs __iomem *mdio_regs; /* mdio command and status only */
+ +struct mii_bus *mdio_bus;
+ +static int ports_open;
+-+static struct port *switch_port_tab[3];
+++static struct port *switch_port_tab[4];
+ +static struct dma_pool *rx_dma_pool;
+ +static struct dma_pool *tx_dma_pool;
+ +struct net_device *napi_dev;
+@@ -405,6 +419,21 @@
+ +	mdiobus_free(mdio_bus);
+ +}
+ +
+++static void enable_tx_dma(struct sw *sw)
+++{
+++	__raw_writel(0x1, &sw->regs->ts_dma_ctrl0);
+++}
+++
+++static void disable_tx_dma(struct sw *sw)
+++{
+++	__raw_writel(0x0, &sw->regs->ts_dma_ctrl0);
+++}
+++
+++static void enable_rx_dma(struct sw *sw)
+++{
+++	__raw_writel(0x1, &sw->regs->fs_dma_ctrl0);
+++}
+++
+ +static void cns3xxx_adjust_link(struct net_device *dev)
+ +{
+ +	struct port *port = netdev_priv(dev);
+@@ -439,31 +468,85 @@
+ +	return (IRQ_HANDLED);
+ +}
+ +
+++irqreturn_t eth_stat_irq(int irq, void *pdev)
+++{
+++	struct net_device *dev = pdev;
+++	struct sw *sw = netdev_priv(dev);
+++	u32 cfg;
+++	u32 stat = __raw_readl(&sw->regs->intr_stat);
+++	__raw_writel(0xffffffff, &sw->regs->intr_stat);
+ +
+++	if (stat & MAC2_RX_ERROR)
+++		switch_port_tab[3]->netdev->stats.rx_dropped++;
+++	if (stat & MAC1_RX_ERROR)
+++		switch_port_tab[1]->netdev->stats.rx_dropped++;
+++	if (stat & MAC0_RX_ERROR)
+++		switch_port_tab[0]->netdev->stats.rx_dropped++;
+++
+++	if (stat & MAC0_STATUS_CHANGE) {
+++		cfg = __raw_readl(&sw->regs->mac_cfg[0]);
+++		switch_port_tab[0]->phydev->link = (cfg & 0x1);
+++		switch_port_tab[0]->phydev->duplex = ((cfg >> 4) & 0x1);
+++		if (((cfg >> 2) & 0x3) == 2)
+++			switch_port_tab[0]->phydev->speed = 1000;
+++		else if (((cfg >> 2) & 0x3) == 1)
+++			switch_port_tab[0]->phydev->speed = 100;
+++		else
+++			switch_port_tab[0]->phydev->speed = 10;
+++		cns3xxx_adjust_link(switch_port_tab[0]->netdev);
+++	}
+++
+++	if (stat & MAC1_STATUS_CHANGE) {
+++		cfg = __raw_readl(&sw->regs->mac_cfg[1]);
+++		switch_port_tab[1]->phydev->link = (cfg & 0x1);
+++		switch_port_tab[1]->phydev->duplex = ((cfg >> 4) & 0x1);
+++		if (((cfg >> 2) & 0x3) == 2)
+++			switch_port_tab[1]->phydev->speed = 1000;
+++		else if (((cfg >> 2) & 0x3) == 1)
+++			switch_port_tab[1]->phydev->speed = 100;
+++		else
+++			switch_port_tab[1]->phydev->speed = 10;
+++		cns3xxx_adjust_link(switch_port_tab[1]->netdev);
+++	}
+++
+++	if (stat & MAC2_STATUS_CHANGE) {
+++		cfg = __raw_readl(&sw->regs->mac_cfg[3]);
+++		switch_port_tab[3]->phydev->link = (cfg & 0x1);
+++		switch_port_tab[3]->phydev->duplex = ((cfg >> 4) & 0x1);
+++		if (((cfg >> 2) & 0x3) == 2)
+++			switch_port_tab[3]->phydev->speed = 1000;
+++		else if (((cfg >> 2) & 0x3) == 1)
+++			switch_port_tab[3]->phydev->speed = 100;
+++		else
+++			switch_port_tab[3]->phydev->speed = 10;
+++		cns3xxx_adjust_link(switch_port_tab[3]->netdev);
+++	}
+++
+++	return (IRQ_HANDLED);
+++}
+++
+++
+ +static void cns3xxx_alloc_rx_buf(struct sw *sw, int received)
+ +{
+ +	struct _rx_ring *rx_ring = sw->rx_ring;
+ +	unsigned int i = rx_ring->alloc_index;
+-+	struct rx_desc *desc;
+++	struct rx_desc *desc = &(rx_ring)->desc[i];
+ +	struct sk_buff *skb;
+-+	u32 mtu = sw->mtu;
+++	unsigned int phys;
+ +
+-+	rx_ring->alloc_count += received;
+-+
+-+	for (received = rx_ring->alloc_count; received > 0; received--) {
+-+		desc = &(rx_ring)->desc[i];
+-+
+-+		if ((skb = dev_alloc_skb(mtu))) {
+++	for (received += rx_ring->alloc_count; received > 0; received--) {
+++		if ((skb = dev_alloc_skb(MAX_MRU))) {
+ +			if (SKB_DMA_REALIGN)
+ +				skb_reserve(skb, SKB_DMA_REALIGN);
+ +			skb_reserve(skb, NET_IP_ALIGN);
+-+			desc->sdp = dma_map_single(NULL, skb->data,
+-+				    mtu, DMA_FROM_DEVICE);
+-+			if (dma_mapping_error(NULL, desc->sdp)) {
+++			phys = dma_map_single(NULL, skb->data,
+++				    MAX_MRU, DMA_FROM_DEVICE);
+++			if (dma_mapping_error(NULL, phys)) {
+ +				dev_kfree_skb(skb);
+ +				/* Failed to map, better luck next time */
+ +				goto out;;
+ +			}
+++			desc->sdp = phys;
+ +		} else {
+ +			/* Failed to allocate skb, try again next time */
+ +			goto out;
+@@ -471,13 +554,16 @@
+ +
+ +		/* put the new buffer on RX-free queue */
+ +		rx_ring->buff_tab[i] = skb;
+-+
+-+		if (++i == RX_DESCS) {
+++		rx_ring->phys_tab[i] = phys;
+++		if (i == RX_DESCS - 1) {
+ +			i = 0;
+ +			desc->config0 = END_OF_RING | FIRST_SEGMENT |
+-+					LAST_SEGMENT | mtu;
+++					LAST_SEGMENT | MAX_MRU;
+++			desc = &(rx_ring)->desc[i];
+ +		} else {
+-+			desc->config0 = FIRST_SEGMENT | LAST_SEGMENT | mtu;
+++			desc->config0 = FIRST_SEGMENT | LAST_SEGMENT | MAX_MRU;
+++			i++;
+++			desc++;
+ +		}
+ +	}
+ +out:
+@@ -485,58 +571,14 @@
+ +	rx_ring->alloc_index = i;
+ +}
+ +
+-+static void update_tx_stats(struct sw *sw)
+-+{
+-+	struct _tx_ring *tx_ring = sw->tx_ring;
+-+	struct tx_desc *desc;
+-+	struct tx_desc *next_desc;
+-+	struct sk_buff *skb;
+-+	int i;
+-+	int index;
+-+	int num_count;
+-+
+-+	spin_lock_bh(&stat_lock);
+-+
+-+	num_count = tx_ring->num_count;
+-+
+-+	if (!num_count) {
+-+		spin_unlock_bh(&stat_lock);
+-+		return;
+-+	}
+-+
+-+	index = tx_ring->count_index;
+-+	desc = &(tx_ring)->desc[index];
+-+	for (i = 0; i < num_count; i++) {
+-+		skb = tx_ring->buff_tab[index];
+-+		if (desc->cown) {
+-+			tx_ring->buff_tab[index] = 0;
+-+			if (unlikely(++index == TX_DESCS)) index = 0;
+-+			next_desc = &(tx_ring)->desc[index];
+-+			prefetch(next_desc + 4);
+-+			if (likely(skb)) {
+-+				skb->dev->stats.tx_packets++;
+-+				skb->dev->stats.tx_bytes += skb->len;
+-+				dev_kfree_skb_any(skb);
+-+			}
+-+			desc = next_desc;
+-+		} else {
+-+			break;
+-+		}
+-+	}
+-+	tx_ring->num_count -= i;
+-+	tx_ring->count_index = index;
+-+
+-+	spin_unlock_bh(&stat_lock);
+-+}
+-+
+ +static void clear_tx_desc(struct sw *sw)
+ +{
+ +	struct _tx_ring *tx_ring = sw->tx_ring;
+ +	struct tx_desc *desc;
+-+	struct tx_desc *next_desc;
+ +	int i;
+ +	int index;
+-+	int num_used = tx_ring->num_used - tx_ring->num_count;
+++	int num_used = tx_ring->num_used;
+++	struct sk_buff *skb;
+ +
+ +	if (num_used < (TX_DESCS >> 1))
+ +		return;
+@@ -545,14 +587,18 @@
+ +	desc = &(tx_ring)->desc[index];
+ +	for (i = 0; i < num_used; i++) {
+ +		if (desc->cown) {
+-+			if (unlikely(++index == TX_DESCS)) index = 0;
+-+			next_desc = &(tx_ring)->desc[index];
+-+			prefetch(next_desc);
+-+			prefetch(next_desc + 4);
+-+			if (likely(desc->sdp))
+-+				dma_unmap_single(NULL, desc->sdp,
+-+					desc->sdl, DMA_TO_DEVICE);
+-+			desc = next_desc;
+++			skb = tx_ring->buff_tab[index];
+++			tx_ring->buff_tab[index] = 0;
+++			if (skb)
+++				dev_kfree_skb_any(skb);
+++			dma_unmap_single(NULL, tx_ring->phys_tab[index],
+++				desc->sdl, DMA_TO_DEVICE);
+++			if (++index == TX_DESCS) {
+++				index = 0;
+++				desc = &(tx_ring)->desc[index];
+++			} else {
+++				desc++;
+++			}
+ +		} else {
+ +			break;
+ +		}
+@@ -569,9 +615,7 @@
+ +	int received = 0;
+ +	unsigned int length;
+ +	unsigned int i = rx_ring->cur_index;
+-+	struct rx_desc *next_desc;
+ +	struct rx_desc *desc = &(rx_ring)->desc[i];
+-+	int port_id;
+ +
+ +	while (desc->cown) {
+ +		struct sk_buff *skb;
+@@ -581,19 +625,11 @@
+ +
+ +		skb = rx_ring->buff_tab[i];
+ +
+-+		if (++i == RX_DESCS) i = 0;
+-+		next_desc = &(rx_ring)->desc[i];
+-+		prefetch(next_desc);
+++		dev = switch_port_tab[desc->sp]->netdev;
+ +
+-+		port_id = desc->sp;
+-+		if (port_id == 4)
+-+			dev = switch_port_tab[2]->netdev;
+-+		else
+-+			dev = switch_port_tab[port_id]->netdev;
+-+
+ +		length = desc->sdl;
+ +		/* process received frame */
+-+		dma_unmap_single(&dev->dev, desc->sdp,
+++		dma_unmap_single(&dev->dev, rx_ring->phys_tab[i],
+ +				 length, DMA_FROM_DEVICE);
+ +
+ +		skb_put(skb, length);
+@@ -624,10 +660,17 @@
+ +		napi_gro_receive(napi, skb);
+ +
+ +		received++;
+-+		desc = next_desc;
+++
+++		if (++i == RX_DESCS) {
+++			i = 0;
+++			desc = &(rx_ring)->desc[i];
+++		} else {
+++			desc++;
+++		}
+ +	}
+ +
+ +	cns3xxx_alloc_rx_buf(sw, received);
+++
+ +	rx_ring->cur_index = i;
+ +
+ +	if (received != budget) {
+@@ -635,6 +678,8 @@
+ +		enable_irq(IRQ_CNS3XXX_SW_R0RXC);
+ +	}
+ +
+++	enable_rx_dma(sw);
+++
+ +	return received;
+ +}
+ +
+@@ -645,63 +690,145 @@
+ +	struct _tx_ring *tx_ring = sw->tx_ring;
+ +	struct tx_desc *tx_desc;
+ +	int index;
+-+	int len = skb->len;
+++	int len;
+ +	char pmap = (1 << port->id);
+++	unsigned int phys;
+++	unsigned int nr_frags = skb_shinfo(skb)->nr_frags;
+++	struct skb_frag_struct *frag;
+++	unsigned int i;
+ +
+ +	if (pmap == 8)
+ +		pmap = (1 << 4);
+ +
+-+	if (unlikely(len > sw->mtu)) {
+++	if (skb->len > MAX_MRU) {
+ +		dev_kfree_skb(skb);
+ +		dev->stats.tx_errors++;
+ +		return NETDEV_TX_OK;
+ +	}
+ +
+-+	update_tx_stats(sw);
+++	write_lock(&tx_lock);
+ +
+-+	spin_lock_bh(&tx_lock);
+-+
+-+	clear_tx_desc(sw);
+-+
+-+	if (unlikely(tx_ring->num_used == TX_DESCS)) {
+-+		spin_unlock_bh(&tx_lock);
+-+		return NETDEV_TX_BUSY;
+++	if ((tx_ring->num_used + nr_frags) >= TX_DESCS) {
+++		clear_tx_desc(sw);
+++		if ((tx_ring->num_used + nr_frags) >= TX_DESCS) {
+++			write_unlock(&tx_lock);
+++			return NETDEV_TX_BUSY;
+++		}
+ +	}
+ +
+ +	index = tx_ring->cur_index;
+++	tx_ring->cur_index = ((tx_ring->cur_index + nr_frags + 1) % TX_DESCS);
+ +
+-+	if (unlikely(++tx_ring->cur_index == TX_DESCS))
+-+		tx_ring->cur_index = 0;
+++	write_unlock(&tx_lock);
+ +
+-+	tx_ring->num_used++;
+-+	tx_ring->num_count++;
+++	tx_desc = &(tx_ring)->desc[index];
+ +
+-+	spin_unlock_bh(&tx_lock);
+++	if (!nr_frags) {
+++		len = skb->len;
+ +
+-+	tx_desc = &(tx_ring)->desc[index];
+++		phys = dma_map_single(NULL, skb->data, len,
+++				      	DMA_TO_DEVICE);
+ +
+-+	tx_desc->sdp = dma_map_single(NULL, skb->data, len,
+-+				      DMA_TO_DEVICE);
+++		tx_desc->sdp = phys;
+++		tx_desc->pmap = pmap;
+++		tx_ring->phys_tab[index] = phys;
+ +
+-+	if (dma_mapping_error(NULL, tx_desc->sdp)) {
+-+		dev_kfree_skb(skb);
+-+		dev->stats.tx_errors++;
+-+		return NETDEV_TX_OK;
+-+	}
+++		tx_ring->buff_tab[index] = skb;
+++		if (index == TX_DESCS - 1) {
+++			tx_desc->config0 = END_OF_RING | FIRST_SEGMENT | LAST_SEGMENT |
+++				   	FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
+++				   	TCP_CHECKSUM | len;
+++		} else {
+++			tx_desc->config0 = FIRST_SEGMENT | LAST_SEGMENT |
+++				   	FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
+++				   	TCP_CHECKSUM | len;
+++		}
+++	} else {
+ +
+-+	tx_desc->pmap = pmap;
+-+	tx_ring->buff_tab[index] = skb;
+++		disable_tx_dma(sw);
+++		len = skb->len - skb->data_len;
+ +
+-+	if (index == TX_DESCS - 1) {
+-+		tx_desc->config0 = END_OF_RING | FIRST_SEGMENT | LAST_SEGMENT |
+-+				   FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
+-+				   TCP_CHECKSUM | len;
+-+	} else {
+-+		tx_desc->config0 = FIRST_SEGMENT | LAST_SEGMENT |
+-+				   FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
+-+				   TCP_CHECKSUM | len;
+++		phys = dma_map_single(NULL, skb->data, len,
+++				      	DMA_TO_DEVICE);
+++
+++		tx_desc->sdp = phys;
+++		tx_desc->pmap = pmap;
+++		tx_ring->phys_tab[index] = phys;
+++
+++		if (index == TX_DESCS - 1) {
+++			tx_desc->config0 = END_OF_RING | FIRST_SEGMENT |
+++				   	FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
+++				   	TCP_CHECKSUM | len;
+++			index = 0;
+++			tx_desc = &(tx_ring)->desc[index];
+++		} else {
+++			tx_desc->config0 = FIRST_SEGMENT |
+++				   	FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
+++				   	TCP_CHECKSUM | len;
+++			index++;
+++			tx_desc++;
+++		}
+++
+++		for (i = 0; i < nr_frags - 1; i++) {
+++
+++			frag = &skb_shinfo(skb)->frags[i];
+++			len = frag->size;
+++
+++			phys = dma_map_single(NULL, page_address(frag->page) + frag->page_offset, len,
+++					      	DMA_TO_DEVICE);
+++
+++			tx_desc->sdp = phys;
+++
+++			tx_desc->pmap = pmap;
+++			tx_ring->phys_tab[index] = phys;
+++
+++			if (index == TX_DESCS - 1) {
+++				tx_desc->config0 = END_OF_RING |
+++			   			FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
+++			   			TCP_CHECKSUM | len;
+++				index = 0;
+++				tx_desc = &(tx_ring)->desc[index];
+++			} else {
+++				tx_desc->config0 = FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
+++			   			TCP_CHECKSUM | len;
+++				index++;
+++				tx_desc++;
+++			}
+++		}
+++
+++		frag = &skb_shinfo(skb)->frags[i];
+++		len = frag->size;
+++
+++		phys = dma_map_single(NULL, page_address(frag->page) + frag->page_offset, len,
+++					      DMA_TO_DEVICE);
+++
+++		tx_desc->sdp = phys;
+++
+++		tx_desc->pmap = pmap;
+++		tx_ring->phys_tab[index] = phys;
+++		tx_ring->buff_tab[index] = skb;
+++		if (index == TX_DESCS - 1) {
+++			tx_desc->config0 = END_OF_RING | LAST_SEGMENT |
+++				   	FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
+++				   	TCP_CHECKSUM | len;
+++		} else {
+++			tx_desc->config0 = LAST_SEGMENT |
+++				   	FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
+++				   	TCP_CHECKSUM | len;
+++		}
+ +	}
+ +
+++	mb();
+++
+++	write_lock(&tx_lock);
+++	tx_ring->num_used += nr_frags + 1;
+++	write_unlock(&tx_lock);
+++
+++	dev->stats.tx_packets++;
+++	dev->stats.tx_bytes += skb->len;
+++
+++	enable_tx_dma(sw);
+++
+ +	return NETDEV_TX_OK;
+ +}
+ +
+@@ -776,23 +903,24 @@
+ +	for (i = 0; i < RX_DESCS; i++) {
+ +		struct rx_desc *desc = &(rx_ring)->desc[i];
+ +		struct sk_buff *skb;
+-+		if (!(skb = dev_alloc_skb(sw->mtu)))
+++		if (!(skb = dev_alloc_skb(MAX_MRU)))
+ +			return -ENOMEM;
+ +		if (SKB_DMA_REALIGN)
+ +			skb_reserve(skb, SKB_DMA_REALIGN);
+ +		skb_reserve(skb, NET_IP_ALIGN);
+-+		desc->sdl = sw->mtu;
+++		desc->sdl = MAX_MRU;
+ +		if (i == (RX_DESCS - 1))
+ +			desc->eor = 1;
+ +		desc->fsd = 1;
+ +		desc->lsd = 1;
+ +
+ +		desc->sdp = dma_map_single(NULL, skb->data,
+-+					    sw->mtu, DMA_FROM_DEVICE);
+++					    MAX_MRU, DMA_FROM_DEVICE);
+ +		if (dma_mapping_error(NULL, desc->sdp)) {
+ +			return -EIO;
+ +		}
+ +		rx_ring->buff_tab[i] = skb;
+++		rx_ring->phys_tab[i] = desc->sdp;
+ +		desc->cown = 0;
+ +	}
+ +	__raw_writel(rx_ring->phys_addr, &sw->regs->fs_desc_ptr0);
+@@ -833,7 +961,7 @@
+ +			if (skb) {
+ +				dma_unmap_single(NULL,
+ +						 desc->sdp,
+-+						 sw->mtu, DMA_FROM_DEVICE);
+++						 MAX_MRU, DMA_FROM_DEVICE);
+ +				dev_kfree_skb(skb);
+ +			}
+ +		}
+@@ -873,10 +1001,13 @@
+ +
+ +	if (!ports_open) {
+ +		request_irq(IRQ_CNS3XXX_SW_R0RXC, eth_rx_irq, IRQF_SHARED, "gig_switch", napi_dev);
+++		request_irq(IRQ_CNS3XXX_SW_STATUS, eth_stat_irq, IRQF_SHARED, "gig_stat", napi_dev);
+ +		napi_enable(&sw->napi);
+ +		netif_start_queue(napi_dev);
+-+		//enable_irq(IRQ_CNS3XXX_SW_R0RXC);
+ +
+++ 		__raw_writel(~(MAC0_STATUS_CHANGE | MAC1_STATUS_CHANGE | MAC2_STATUS_CHANGE |
+++ 									 MAC0_RX_ERROR | MAC1_RX_ERROR | MAC2_RX_ERROR), &sw->regs->intr_mask);
+++
+ +		temp = __raw_readl(&sw->regs->mac_cfg[2]);
+ +		temp &= ~(PORT_DISABLE);
+ +		__raw_writel(temp, &sw->regs->mac_cfg[2]);
+@@ -885,7 +1016,7 @@
+ +		temp &= ~(TS_SUSPEND | FS_SUSPEND);
+ +		__raw_writel(temp, &sw->regs->dma_auto_poll_cfg);
+ +
+-+		__raw_writel((TS_POLL_EN | FS_POLL_EN), &sw->regs->dma_auto_poll_cfg);
+++		enable_rx_dma(sw);
+ +	}
+ +	temp = __raw_readl(&sw->regs->mac_cfg[port->id]);
+ +	temp &= ~(PORT_DISABLE);
+@@ -916,6 +1047,8 @@
+ +	if (!ports_open) {
+ +		disable_irq(IRQ_CNS3XXX_SW_R0RXC);
+ +		free_irq(IRQ_CNS3XXX_SW_R0RXC, napi_dev);
+++		disable_irq(IRQ_CNS3XXX_SW_STATUS);
+++		free_irq(IRQ_CNS3XXX_SW_STATUS, napi_dev);
+ +		napi_disable(&sw->napi);
+ +		netif_stop_queue(napi_dev);
+ +		temp = __raw_readl(&sw->regs->mac_cfg[2]);
+@@ -1005,96 +1138,13 @@
+ +	return 0;
+ +}
+ +
+-+static int cns3xxx_change_mtu(struct net_device *netdev, int new_mtu)
+-+{
+-+	struct port *port = netdev_priv(netdev);
+-+	struct sw *sw = port->sw;
+-+	u32 temp;
+-+	int i;
+-+	struct _rx_ring *rx_ring = sw->rx_ring;
+-+	struct rx_desc *desc;
+-+	struct sk_buff *skb;
+-+
+-+	if (new_mtu > MAX_MRU)
+-+		return -EINVAL;
+-+
+-+	netdev->mtu = new_mtu;
+-+
+-+	new_mtu += 36 + SKB_DMA_REALIGN;
+-+	port->mtu = new_mtu;
+-+
+-+	new_mtu = 0;
+-+	for (i = 0; i < 3; i++) {
+-+		if (switch_port_tab[i]) {
+-+			if (switch_port_tab[i]->mtu > new_mtu)
+-+				new_mtu = switch_port_tab[i]->mtu;
+-+		}
+-+	}
+-+
+-+
+-+	if (new_mtu == sw->mtu)
+-+		return 0;
+-+
+-+	disable_irq(IRQ_CNS3XXX_SW_R0RXC);
+-+
+-+	sw->mtu = new_mtu;
+-+
+-+	/* Disable DMA */
+-+	__raw_writel(TS_SUSPEND | FS_SUSPEND, &sw->regs->dma_auto_poll_cfg);
+-+
+-+	for (i = 0; i < RX_DESCS; i++) {
+-+		desc = &(rx_ring)->desc[i];
+-+		/* Check if we own it, if we do, it will get set correctly
+-+		 * when it is re-used */
+-+		if (!desc->cown) {
+-+			skb = rx_ring->buff_tab[i];
+-+			dma_unmap_single(NULL, desc->sdp, desc->sdl,
+-+					 DMA_FROM_DEVICE);
+-+			dev_kfree_skb(skb);
+-+
+-+			if ((skb = dev_alloc_skb(new_mtu))) {
+-+				if (SKB_DMA_REALIGN)
+-+					skb_reserve(skb, SKB_DMA_REALIGN);
+-+				skb_reserve(skb, NET_IP_ALIGN);
+-+				desc->sdp = dma_map_single(NULL, skb->data,
+-+					    new_mtu, DMA_FROM_DEVICE);
+-+				if (dma_mapping_error(NULL, desc->sdp)) {
+-+					dev_kfree_skb(skb);
+-+					skb = NULL;
+-+				}
+-+			}
+-+
+-+			/* put the new buffer on RX-free queue */
+-+			rx_ring->buff_tab[i] = skb;
+-+
+-+			if (i == RX_DESCS - 1)
+-+				desc->config0 = END_OF_RING | FIRST_SEGMENT |
+-+						LAST_SEGMENT | new_mtu;
+-+			else
+-+				desc->config0 = FIRST_SEGMENT |
+-+						LAST_SEGMENT | new_mtu;
+-+		}
+-+	}
+-+
+-+	/* Re-ENABLE DMA */
+-+	temp = __raw_readl(&sw->regs->dma_auto_poll_cfg);
+-+	temp &= ~(TS_SUSPEND | FS_SUSPEND);
+-+	__raw_writel(temp, &sw->regs->dma_auto_poll_cfg);
+-+
+-+	__raw_writel((TS_POLL_EN | FS_POLL_EN), &sw->regs->dma_auto_poll_cfg);
+-+
+-+	enable_irq(IRQ_CNS3XXX_SW_R0RXC);
+-+
+-+	return 0;
+-+}
+-+
+ +static const struct net_device_ops cns3xxx_netdev_ops = {
+ +	.ndo_open = eth_open,
+ +	.ndo_stop = eth_close,
+ +	.ndo_start_xmit = eth_xmit,
+ +	.ndo_set_rx_mode = eth_rx_mode,
+ +	.ndo_do_ioctl = eth_ioctl,
+-+	.ndo_change_mtu = cns3xxx_change_mtu,
+++	.ndo_change_mtu = eth_change_mtu,
+ +	.ndo_set_mac_address = eth_set_mac,
+ +	.ndo_validate_addr = eth_validate_addr,
+ +};
+@@ -1111,12 +1161,10 @@
+ +	int err;
+ +	u32 temp;
+ +
+-+	spin_lock_init(&tx_lock);
+-+	spin_lock_init(&stat_lock);
+-+
+ +	if (!(napi_dev = alloc_etherdev(sizeof(struct sw))))
+ +		return -ENOMEM;
+ +	strcpy(napi_dev->name, "switch%d");
+++	napi_dev->features = NETIF_F_IP_CSUM | NETIF_F_SG;
+ +
+ +	SET_NETDEV_DEV(napi_dev, &pdev->dev);
+ +	sw = netdev_priv(napi_dev);
+@@ -1129,11 +1177,9 @@
+ +		goto err_free;
+ +	}
+ +
+-+	sw->mtu = 1536 + SKB_DMA_REALIGN;
+-+
+ +	for (i = 0; i < 4; i++) {
+ +		temp = __raw_readl(&sw->regs->mac_cfg[i]);
+-+		temp |= (PORT_DISABLE) | 0x80000000;
+++		temp |= (PORT_DISABLE);
+ +		__raw_writel(temp, &sw->regs->mac_cfg[i]);
+ +	}
+ +
+@@ -1144,7 +1190,7 @@
+ +	temp |= NIC_MODE | VLAN_UNAWARE;
+ +	__raw_writel(temp, &sw->regs->vlan_cfg);
+ +
+-+	__raw_writel(UNKNOWN_VLAN_TO_CPU | ACCEPT_CRC_PACKET |
+++	__raw_writel(UNKNOWN_VLAN_TO_CPU |
+ +		     CRC_STRIPPING, &sw->regs->mac_glob_cfg);
+ +
+ +	if (!(sw->rx_ring = kmalloc(sizeof(struct _rx_ring), GFP_KERNEL))) {
+@@ -1177,7 +1223,6 @@
+ +			goto free_ports;
+ +		}
+ +
+-+		//SET_NETDEV_DEV(dev, &pdev->dev);
+ +		port = netdev_priv(dev);
+ +		port->netdev = dev;
+ +		if (i == 2)
+@@ -1185,36 +1230,33 @@
+ +		else
+ +			port->id = i;
+ +		port->sw = sw;
+-+		port->mtu = sw->mtu;
+ +
+ +		temp = __raw_readl(&sw->regs->mac_cfg[port->id]);
+-+		temp |= (PORT_DISABLE);
+++		temp |= (PORT_DISABLE | PORT_BLOCK_STATE | PORT_LEARN_DIS);
+ +		__raw_writel(temp, &sw->regs->mac_cfg[port->id]);
+ +
+ +		dev->netdev_ops = &cns3xxx_netdev_ops;
+ +		dev->ethtool_ops = &cns3xxx_ethtool_ops;
+ +		dev->tx_queue_len = 1000;
+-+		dev->features = NETIF_F_HW_CSUM;
+++		dev->features = NETIF_F_IP_CSUM | NETIF_F_SG;
+ +
+-+		dev->vlan_features = NETIF_F_HW_CSUM;
+-+
+-+		switch_port_tab[i] = port;
+++		switch_port_tab[port->id] = port;
+ +		memcpy(dev->dev_addr, &plat->hwaddr[i], ETH_ALEN);
+ +
+ +		snprintf(phy_id, MII_BUS_ID_SIZE + 3, PHY_ID_FMT, "0", plat->phy[i]);
+ +		port->phydev = phy_connect(dev, phy_id, &cns3xxx_adjust_link, 0,
+ +			PHY_INTERFACE_MODE_RGMII);
+ +		if ((err = IS_ERR(port->phydev))) {
+-+			switch_port_tab[i] = 0;
+++			switch_port_tab[port->id] = 0;
+ +			free_netdev(dev);
+ +			goto free_ports;
+ +		}
+ +
+-+		port->phydev->irq = PHY_POLL;
+++		port->phydev->irq = PHY_IGNORE_INTERRUPT;
+ +
+ +		if ((err = register_netdev(dev))) {
+ +			phy_disconnect(port->phydev);
+-+			switch_port_tab[i] = 0;
+++			switch_port_tab[port->id] = 0;
+ +			free_netdev(dev);
+ +			goto free_ports;
+ +		}
+@@ -1254,7 +1296,7 @@
+ +	int i;
+ +	destroy_rings(sw);
+ +
+-+	for (i = 2; i >= 0; i--) {
+++	for (i = 3; i >= 0; i--) {
+ +		if (switch_port_tab[i]) {
+ +			struct port *port = switch_port_tab[i];
+ +			struct net_device *dev = port->netdev;
+Index: trunk/target/linux/cns3xxx/patches/053-cns3xxx_wdt.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/053-cns3xxx_wdt.patch	(revision 27590)
++++ trunk/target/linux/cns3xxx/patches/053-cns3xxx_wdt.patch	(working copy)
+@@ -52,6 +52,15 @@
+  
+  	/* We only accept one device, and it must have an id of -1 */
+  	if (dev->id != -1)
++@@ -352,7 +355,7 @@ static int __devinit mpcore_wdt_probe(st
++ 		ret = -ENXIO;
++ 		goto err_free;
++ 	}
++-	wdt->base = ioremap(res->start, resource_size(res));
+++	wdt->base = ioremap(res->start + 0x100, resource_size(res));
++ 	if (!wdt->base) {
++ 		ret = -ENOMEM;
++ 		goto err_free;
+ @@ -375,6 +378,22 @@ static int __devinit mpcore_wdt_probe(st
+  		goto err_irq;
+  	}
+Index: trunk/target/linux/cns3xxx/patches/100-laguna_support.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/100-laguna_support.patch	(revision 27590)
++++ trunk/target/linux/cns3xxx/patches/100-laguna_support.patch	(working copy)
+@@ -1,6 +1,6 @@
+ --- /dev/null
+ +++ b/arch/arm/mach-cns3xxx/laguna.c
+-@@ -0,0 +1,761 @@
++@@ -0,0 +1,905 @@
+ +/*
+ + * Gateworks Corporation Laguna Platform
+ + *
+@@ -12,6 +12,8 @@
+ + *		  Anton Vorontsov <avorontsov@mvista.com>
+ + * Copyright 2011 Gateworks Corporation
+ + *		  Chris Lang <clang@gateworks.com>
+++ * Copyright 2012 Gateworks Corporation
+++ *		  Tim Harvey <tharvey@gateworks.com>
+ + *
+ + * This file is free software; you can redistribute it and/or modify
+ + * it under the terms of the GNU General Public License, Version 2, as
+@@ -22,6 +24,8 @@
+ +#include <linux/kernel.h>
+ +#include <linux/compiler.h>
+ +#include <linux/io.h>
+++#include <linux/gpio.h>
+++#include <linux/smp.h>
+ +#include <linux/dma-mapping.h>
+ +#include <linux/serial_core.h>
+ +#include <linux/serial_8250.h>
+@@ -48,6 +52,8 @@
+ +#include "core.h"
+ +#include "devices.h"
+ +
+++#define ARRAY_AND_SIZE(x)       (x), ARRAY_SIZE(x)
+++
+ +// Config 1 Bitmap
+ +#define ETH0_LOAD           BIT(0)
+ +#define ETH1_LOAD           BIT(1)
+@@ -381,6 +387,7 @@
+ +		.uartclk        = 24000000,
+ +		.type           = PORT_16550A,
+ +	},
+++	{ },
+ +};
+ +
+ +static struct platform_device laguna_uart = {
+@@ -490,7 +497,7 @@
+ +
+ +static void at24_setup(struct memory_accessor *mem_acc, void *context)
+ +{
+-+	char buf[8];
+++	char buf[16];
+ +
+ +	at24_mem_acc = mem_acc;
+ +
+@@ -554,11 +561,10 @@
+ +/*
+ + * Watchdog
+ + */
+-+
+ +static struct resource laguna_watchdog_resource[] = {
+ +	{
+ +		.start = CNS3XXX_TC11MP_TWD_BASE,
+-+		.end = CNS3XXX_TC11MP_TWD_BASE + SZ_4K - 1,
+++		.end = CNS3XXX_TC11MP_TWD_BASE + 0x100 - 1,
+ +		.flags = IORESOURCE_MEM,
+ +	},{
+ +		.start = IRQ_LOCALWDOG,
+@@ -575,19 +581,118 @@
+ +};
+ +
+ +/*
+++ * GPIO
+++ */
+++static struct platform_device laguna_gpio_dev = {
+++	.name = "GPIODEV",
+++	.id = -1,
+++};
+++
+++static struct gpio laguna_gpio_gw2391[] = {
+++	{   0, GPIOF_IN           , "*GPS_PPS" },
+++	{   1, GPIOF_IN           , "*GSC_IRQ#" },
+++	{   2, GPIOF_IN           , "*USB_FAULT#" },
+++	{   5, GPIOF_OUT_INIT_LOW , "*USB0_PCI_SEL" },
+++	{   6, GPIOF_OUT_INIT_HIGH, "*USB_VBUS_EN" },
+++	{   7, GPIOF_OUT_INIT_LOW , "*USB1_PCI_SEL" },
+++	{   8, GPIOF_OUT_INIT_HIGH, "*PERST#" },
+++	{   9, GPIOF_OUT_INIT_LOW , "*FP_SER_EN#" },
+++	{ 100, GPIOF_IN           , "*USER_PB#" },
+++	{ 103, GPIOF_OUT_INIT_HIGH, "*V5_EN" },
+++	{ 108, GPIOF_IN           , "DIO0" },
+++	{ 109, GPIOF_IN           , "DIO1" },
+++	{ 110, GPIOF_IN           , "DIO2" },
+++	{ 111, GPIOF_IN           , "DIO3" },
+++	{ 112, GPIOF_IN           , "DIO4" },
+++};
+++
+++static struct gpio laguna_gpio_gw2388[] = {
+++	{   0, GPIOF_IN           , "*GPS_PPS" },
+++	{   1, GPIOF_IN           , "*GSC_IRQ#" },
+++	{   3, GPIOF_IN           , "*USB_FAULT#" },
+++	{   6, GPIOF_OUT_INIT_HIGH, "*USB_VBUS_EN" },
+++	{   7, GPIOF_OUT_INIT_LOW , "*GSM_SEL0" },
+++	{   8, GPIOF_OUT_INIT_LOW , "*GSM_SEL1" },
+++	{   9, GPIOF_OUT_INIT_LOW , "*FP_SER_EN" },
+++	{ 100, GPIOF_OUT_INIT_HIGH, "*USER_PB#" },
+++	{ 108, GPIOF_IN           , "DIO0" },
+++	{ 109, GPIOF_IN           , "DIO1" },
+++	{ 110, GPIOF_IN           , "DIO2" },
+++	{ 111, GPIOF_IN           , "DIO3" },
+++	{ 112, GPIOF_IN           , "DIO4" },
+++};
+++
+++static struct gpio laguna_gpio_gw2387[] = {
+++	{   0, GPIOF_IN           , "*GPS_PPS" },
+++	{   1, GPIOF_IN           , "*GSC_IRQ#" },
+++	{   2, GPIOF_IN           , "*USB_FAULT#" },
+++	{   5, GPIOF_OUT_INIT_LOW , "*USB_PCI_SEL" },
+++	{   6, GPIOF_OUT_INIT_HIGH, "*USB_VBUS_EN" },
+++	{   7, GPIOF_OUT_INIT_LOW , "*GSM_SEL0" },
+++	{   8, GPIOF_OUT_INIT_LOW , "*GSM_SEL1" },
+++	{   9, GPIOF_OUT_INIT_LOW , "*FP_SER_EN" },
+++	{ 100, GPIOF_IN           , "*USER_PB#" },
+++	{ 103, GPIOF_OUT_INIT_HIGH, "*V5_EN" },
+++	{ 108, GPIOF_IN           , "DIO0" },
+++	{ 109, GPIOF_IN           , "DIO1" },
+++	{ 110, GPIOF_IN           , "DIO2" },
+++	{ 111, GPIOF_IN           , "DIO3" },
+++	{ 112, GPIOF_IN           , "DIO4" },
+++	{ 113, GPIOF_IN           , "DIO5" },
+++};
+++
+++static struct gpio laguna_gpio_gw2384[] = {
+++	{   0, GPIOF_IN           , "*GSC_IRQ#" },
+++	{   1, GPIOF_OUT_INIT_HIGH, "*USB_HST_VBUS_EN" },
+++	{   2, GPIOF_IN           , "*USB_HST_FAULT#" },
+++	{   5, GPIOF_IN           , "*USB_OTG_FAULT#" },
+++	{   6, GPIOF_OUT_INIT_LOW , "*USB_HST_PCI_SEL" },
+++	{   7, GPIOF_OUT_INIT_LOW , "*GSM_SEL0" },
+++	{   8, GPIOF_OUT_INIT_LOW , "*GSM_SEL1" },
+++	{   9, GPIOF_OUT_INIT_LOW , "*FP_SER_EN" },
+++	{  12, GPIOF_OUT_INIT_LOW , "J10_DIOLED0" },
+++	{  13, GPIOF_OUT_INIT_HIGH, "*I2CMUX_RST#" },
+++	{  14, GPIOF_OUT_INIT_LOW , "J10_DIOLED1" },
+++	{  15, GPIOF_OUT_INIT_LOW , "J10_DIOLED2" },
+++	{ 100, GPIOF_IN           , "*USER_PB#" },
+++	{ 103, GPIOF_OUT_INIT_HIGH, "V5_EN" },
+++	{ 108, GPIOF_IN           , "J9_DIOGSC0" },
+++};
+++
+++static struct gpio laguna_gpio_gw2382[] = {
+++	{   0, GPIOF_IN           , "*GPS_PPS" },
+++	{   1, GPIOF_IN           , "*GSC_IRQ#" },
+++	{   2, GPIOF_OUT_INIT_HIGH, "*PCIE_RST#" },
+++	{   3, GPIOF_IN           , "GPIO0" },
+++	{   8, GPIOF_IN           , "GPIO1" },
+++	{   9, GPIOF_OUT_INIT_HIGH, "*USB_VBUS_EN" },
+++	{  10, GPIOF_OUT_INIT_HIGH, "*USB_PCI_SEL#" },
+++	{ 100, GPIOF_IN           , "DIO0" },
+++	{ 101, GPIOF_IN           , "DIO1" },
+++};
+++
+++static struct gpio laguna_gpio_gw2380[] = {
+++	{   0, GPIOF_IN           , "*GPS_PPS" },
+++	{   1, GPIOF_IN           , "*GSC_IRQ#" },
+++	{   3, GPIOF_IN           , "GPIO0" },
+++	{   8, GPIOF_IN           , "GPIO1" },
+++	{ 100, GPIOF_IN           , "DIO0" },
+++	{ 101, GPIOF_IN           , "DIO1" },
+++	{ 102, GPIOF_IN           , "DIO2" },
+++	{ 103, GPIOF_IN           , "DIO3" },
+++};
+++
+++/*
+ + * Initialization
+ + */
+-+
+ +static void __init laguna_init(void)
+ +{
+ +	platform_device_register(&laguna_watchdog);
+ +
+ +	platform_device_register(&laguna_i2c_controller);
+ +
+-+	i2c_register_board_info(0, laguna_i2c_devices,
+-+			ARRAY_SIZE(laguna_i2c_devices));
+++	i2c_register_board_info(0, ARRAY_AND_SIZE(laguna_i2c_devices));
+ +
+-+
+ +	pm_power_off = cns3xxx_power_off;
+ +}
+ +
+@@ -613,17 +718,34 @@
+ +static void __init laguna_map_io(void)
+ +{
+ +	cns3xxx_map_io();
+-+	iotable_init(laguna_io_desc, ARRAY_SIZE(laguna_io_desc));
+++	iotable_init(ARRAY_AND_SIZE(laguna_io_desc));
+ +
+ +	laguna_early_serial_setup();
+ +}
+ +
+++static int laguna_register_gpio(struct gpio *array, size_t num)
+++{
+++	int i, err, ret;
+ +
+++	ret = 0;
+++	for (i = 0; i < num; i++, array++) {
+++		const char *label = array->label;
+++		if (label[0] == '*')
+++			label++;
+++		err = gpio_request_one(array->gpio, array->flags, label);
+++		if (err)
+++			ret = err;
+++		else {
+++			err = gpio_export(array->gpio, array->label[0] != '*');
+++		}
+++	}
+++	return ret;
+++}
+++
+ +static int __init laguna_model_setup(void)
+ +{
+ +	u32 __iomem *mem;
+ +	u32 reg;
+-+	u8 pcie_bitmap = 0;
+ +
+ +	printk("Running on Gateworks Laguna %s\n", laguna_info.model);
+ +
+@@ -641,14 +763,6 @@
+ +		    (laguna_info.config_bitmap & SATA1_LOAD))
+ +			cns3xxx_ahci_init();
+ +
+-+		if (laguna_info.config_bitmap & (PCIE0_LOAD))
+-+			pcie_bitmap |= 0x1;
+-+
+-+		if (laguna_info.config_bitmap & (PCIE1_LOAD))
+-+			pcie_bitmap |= 0x2;
+-+
+-+		cns3xxx_pcie_init(pcie_bitmap);
+-+
+ +		if (laguna_info.config_bitmap & (USB0_LOAD)) {
+ +			cns3xxx_pwr_power_up(1 << PM_PLL_HM_PD_CTRL_REG_OFFSET_PLL_USB);
+ +
+@@ -727,7 +841,7 @@
+ +					laguna_spi_partitions[3].size = SZ_64M - SZ_2M;
+ +				break;
+ +			}
+-+			spi_register_board_info(laguna_spi_devices, ARRAY_SIZE(laguna_spi_devices));
+++			spi_register_board_info(ARRAY_AND_SIZE(laguna_spi_devices));
+ +		}
+ +
+ +		if ((laguna_info.config_bitmap & SPI0_LOAD) ||
+@@ -739,14 +853,44 @@
+ +		 *  the first 6 characters of the model name
+ +		 */
+ +
+-+		if (strncmp(laguna_info.model, "GW2388", 6) == 0) {
+++		if ( (strncmp(laguna_info.model, "GW2388", 6) == 0)
+++		  || (strncmp(laguna_info.model, "GW2389", 6) == 0) )
+++		{
+++			// configure GPIO's
+++			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2388));
+++			// configure LED's
+ +			laguna_gpio_leds_data.num_leds = 2;
+++		} else if (strncmp(laguna_info.model, "GW2387", 6) == 0) {
+++			// configure GPIO's
+++			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2387));
+++			// configure LED's
+++			laguna_gpio_leds_data.num_leds = 2;
+++		} else if (strncmp(laguna_info.model, "GW2384", 6) == 0) {
+++			// configure GPIO's
+++			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2384));
+++			// configure LED's
+++			laguna_gpio_leds_data.num_leds = 1;
+++		} else if (strncmp(laguna_info.model, "GW2382", 6) == 0) {
+++			// configure GPIO's
+++			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2382));
+++			// configure LED's
+++			laguna_gpio_leds[0].gpio = 107;
+++			laguna_gpio_leds_data.num_leds = 1;
+ +		} else if (strncmp(laguna_info.model, "GW2380", 6) == 0) {
+++			// configure GPIO's
+++			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2380));
+++			// configure LED's
+ +			laguna_gpio_leds[0].gpio = 107;
+ +			laguna_gpio_leds[1].gpio = 106;
+ +			laguna_gpio_leds_data.num_leds = 2;
+++		} else if (strncmp(laguna_info.model, "GW2391", 6) == 0) {
+++			// configure GPIO's
+++			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2391));
+++			// configure LED's
+++			laguna_gpio_leds_data.num_leds = 2;
+ +		}
+ +		platform_device_register(&laguna_gpio_leds_device);
+++		platform_device_register(&laguna_gpio_dev);
+ +	} else {
+ +		// Do some defaults here, not sure what yet
+ +	}
+@@ -946,48 +1090,39 @@
+  spear310		MACH_SPEAR310		SPEAR310		2660
+ --- a/arch/arm/mach-cns3xxx/pcie.c
+ +++ b/arch/arm/mach-cns3xxx/pcie.c
+-@@ -365,7 +365,7 @@ static int cns3xxx_pcie_abort_handler(un
+- 	return 0;
+- }
+- 
+--static int __init cns3xxx_pcie_init(void)
+-+int cns3xxx_pcie_init(u8 bitmap)
+- {
+- 	int i;
+- 
+-@@ -373,6 +373,9 @@ static int __init cns3xxx_pcie_init(void
+- 			"imprecise external abort");
+- 
+- 	for (i = 0; i < ARRAY_SIZE(cns3xxx_pcie); i++) {
+-+		if (!(bitmap & (1 << i)))
+-+			continue;
+-+
++@@ -376,8 +376,10 @@ static int __init cns3xxx_pcie_init(void
+  		iotable_init(cns3xxx_pcie[i].cfg_bases,
+  			     ARRAY_SIZE(cns3xxx_pcie[i].cfg_bases));
+  		cns3xxx_pcie_check_link(&cns3xxx_pcie[i]);
+-@@ -384,4 +387,3 @@ static int __init cns3xxx_pcie_init(void
++-		cns3xxx_pcie_hw_init(&cns3xxx_pcie[i]);
++-		pci_common_init(&cns3xxx_pcie[i].hw_pci);
+++		if (cns3xxx_pcie[i].linked) {
+++			cns3xxx_pcie_hw_init(&cns3xxx_pcie[i]);
+++			pci_common_init(&cns3xxx_pcie[i].hw_pci);
+++		}
++ 	}
+  
+- 	return 0;
+- }
+--device_initcall(cns3xxx_pcie_init);
+---- a/arch/arm/mach-cns3xxx/cns3420vb.c
+-+++ b/arch/arm/mach-cns3xxx/cns3420vb.c
+-@@ -175,6 +175,8 @@ static void __init cns3420_init(void)
+- 	cns3xxx_ahci_init();
+- 	cns3xxx_sdhci_init();
++ 	pci_assign_unassigned_resources();
++--- a/arch/arm/mach-cns3xxx/devices.c
+++++ b/arch/arm/mach-cns3xxx/devices.c
++@@ -19,6 +19,7 @@
++ #include <mach/cns3xxx.h>
++ #include <mach/irqs.h>
++ #include <mach/pm.h>
+++#include <asm/mach-types.h>
++ #include "core.h"
++ #include "devices.h"
+  
+-+	cns3xxx_pcie_init(0x3);
+-+
+- 	pm_power_off = cns3xxx_power_off;
+- }
++@@ -102,7 +103,11 @@ void __init cns3xxx_sdhci_init(void)
++ 	u32 gpioa_pins = __raw_readl(gpioa);
+  
+---- a/arch/arm/mach-cns3xxx/include/mach/platform.h
+-+++ b/arch/arm/mach-cns3xxx/include/mach/platform.h
+-@@ -22,5 +22,7 @@ struct cns3xxx_plat_info {
+- 	u32 phy[3];
+- };
++ 	/* MMC/SD pins share with GPIOA */
++-	gpioa_pins |= 0x1fff0004;
+++	if (machine_is_gw2388()) {
+++		gpioa_pins |= 0x1fff0000;
+++	} else {
+++		gpioa_pins |= 0x1fff0004;
+++	}
++ 	__raw_writel(gpioa_pins, gpioa);
+  
+-+extern int cns3xxx_pcie_init(u8 bitmap);
+-+
+- #endif /* __ASM_ARCH_PLATFORM_H */
+- #endif
++ 	cns3xxx_pwr_clk_en(CNS3XXX_PWR_CLK_EN(SDIO));
+Index: trunk/target/linux/cns3xxx/patches/101-laguna_sdhci_card_detect.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/101-laguna_sdhci_card_detect.patch	(revision 27590)
++++ trunk/target/linux/cns3xxx/patches/101-laguna_sdhci_card_detect.patch	(working copy)
+@@ -1,3 +1,6 @@
++cns3xxx SDHCI does not have an inverted WP - fix that
++gateworks boards do not implement CD (uSD socket doesn't support it) so
++flag this as such (TODO - this is board-specific and thus should be passed in) 
+ --- a/drivers/mmc/host/sdhci-cns3xxx.c
+ +++ b/drivers/mmc/host/sdhci-cns3xxx.c
+ @@ -90,8 +90,9 @@ struct sdhci_pltfm_data sdhci_cns3xxx_pd
+Index: trunk/target/linux/cns3xxx/patches/104-cns3xxx_gpio.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/104-cns3xxx_gpio.patch	(revision 27590)
++++ trunk/target/linux/cns3xxx/patches/104-cns3xxx_gpio.patch	(working copy)
+@@ -1,6 +1,6 @@
+ --- a/arch/arm/mach-cns3xxx/cns3420vb.c
+ +++ b/arch/arm/mach-cns3xxx/cns3420vb.c
+-@@ -191,7 +191,7 @@ static struct map_desc cns3420_io_desc[]
++@@ -189,7 +189,7 @@ static struct map_desc cns3420_io_desc[]
+  
+  static void __init cns3420_map_io(void)
+  {
+@@ -131,12 +131,12 @@
+  
+ --- a/arch/arm/mach-cns3xxx/laguna.c
+ +++ b/arch/arm/mach-cns3xxx/laguna.c
+-@@ -520,7 +520,7 @@ static struct map_desc laguna_io_desc[]
++@@ -695,7 +695,7 @@ static struct map_desc laguna_io_desc[]
+  
+  static void __init laguna_map_io(void)
+  {
+ -	cns3xxx_map_io();
+ +	cns3xxx_common_init();
+- 	iotable_init(laguna_io_desc, ARRAY_SIZE(laguna_io_desc));
++ 	iotable_init(ARRAY_AND_SIZE(laguna_io_desc));
+  
+  	laguna_early_serial_setup();
+Index: trunk/target/linux/cns3xxx/patches/107-cns3xxx_memory_layout.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/107-cns3xxx_memory_layout.patch	(revision 0)
++++ trunk/target/linux/cns3xxx/patches/107-cns3xxx_memory_layout.patch	(working copy)
+@@ -0,0 +1,20 @@
++--- a/arch/arm/mach-cns3xxx/Makefile.boot
+++++ b/arch/arm/mach-cns3xxx/Makefile.boot
++@@ -1,3 +1,3 @@
++-   zreladdr-y	:= 0x00008000
++-params_phys-y	:= 0x00000100
++-initrd_phys-y	:= 0x00C00000
+++   zreladdr-y	:= 0x20008000
+++params_phys-y	:= 0x20000100
+++initrd_phys-y	:= 0x20C00000
++--- a/arch/arm/mach-cns3xxx/include/mach/memory.h
+++++ b/arch/arm/mach-cns3xxx/include/mach/memory.h
++@@ -13,7 +13,7 @@
++ /*
++  * Physical DRAM offset.
++  */
++-#define PLAT_PHYS_OFFSET		UL(0x00000000)
+++#define PLAT_PHYS_OFFSET		UL(0x20000000)
++ 
++ #define __phys_to_bus(x)	((x) + PHYS_OFFSET)
++ #define __bus_to_phys(x)	((x) - PHYS_OFFSET)
+Index: trunk/target/linux/cns3xxx/patches/108-cns3xxx_pcie_abort.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/108-cns3xxx_pcie_abort.patch	(revision 0)
++++ trunk/target/linux/cns3xxx/patches/108-cns3xxx_pcie_abort.patch	(working copy)
+@@ -0,0 +1,126 @@
++--- a/arch/arm/mach-cns3xxx/pcie.c
+++++ b/arch/arm/mach-cns3xxx/pcie.c
++@@ -92,6 +92,76 @@ static void __iomem *cns3xxx_pci_cfg_bas
++ 	return base + offset;
++ }
++ 
+++static inline int check_master_abort(struct pci_bus *bus, unsigned int devfn, int where)
+++{
+++	struct cns3xxx_pcie *cnspci = pbus_to_cnspci(bus);
+++
+++  /* check PCI-compatible status register after access */
+++	if (cnspci->linked) {
+++		u32 host_base, sreg, ereg;
+++
+++		host_base = cnspci->cfg_bases[CNS3XXX_HOST_TYPE].virtual;
+++		sreg = __raw_readw(host_base + 0x6) & 0xF900;
+++		ereg = __raw_readl(host_base + 0x104); // Uncorrectable Error Status Reg
+++
+++		if (sreg | ereg) {
+++			/* SREG:
+++			 *  BIT15 - Detected Parity Error
+++			 *  BIT14 - Signaled System Error
+++			 *  BIT13 - Received Master Abort
+++			 *  BIT12 - Received Target Abort
+++			 *  BIT11 - Signaled Target Abort
+++			 *  BIT08 - Master Data Parity Error
+++			 *
+++			 * EREG:
+++			 *  BIT20 - Unsupported Request
+++			 *  BIT19 - ECRC
+++			 *  BIT18 - Malformed TLP
+++			 *  BIT17 - Receiver Overflow
+++			 *  BIT16 - Unexpected Completion
+++			 *  BIT15 - Completer Abort
+++			 *  BIT14 - Completion Timeout
+++			 *  BIT13 - Flow Control Protocol Error
+++			 *  BIT12 - Poisoned TLP
+++			 *  BIT04 - Data Link Protocol Error
+++			 *
+++			 * TODO: see Documentation/pci-error-recovery.txt
+++			 *    implement error_detected handler
+++			 */
+++			printk(KERN_ERR "pci error: %04d:%02x:%02x.%02x sreg=0x%04x ereg=0x%08x", pci_domain_nr(bus), bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn), sreg, ereg);
+++			if (sreg & BIT(15)) printk(" <PERR"); 
+++			if (sreg & BIT(14)) printk(" >SERR"); 
+++			if (sreg & BIT(13)) printk(" <MABRT"); 
+++			if (sreg & BIT(12)) printk(" <TABRT"); 
+++			if (sreg & BIT(11)) printk(" >TABRT"); 
+++			if (sreg & BIT( 8)) printk(" MPERR"); 
+++
+++			if (ereg & BIT(20)) printk(" Unsup"); 
+++			if (ereg & BIT(19)) printk(" ECRC"); 
+++			if (ereg & BIT(18)) printk(" MTLP"); 
+++			if (ereg & BIT(17)) printk(" OFLOW"); 
+++			if (ereg & BIT(16)) printk(" Unex"); 
+++			if (ereg & BIT(15)) printk(" ABRT"); 
+++			if (ereg & BIT(14)) printk(" COMPTO"); 
+++			if (ereg & BIT(13)) printk(" FLOW"); 
+++			if (ereg & BIT(12)) printk(" PTLP"); 
+++			if (ereg & BIT( 4)) printk(" DLINK"); 
+++			printk("\n");
+++			pr_debug("%s failed port%d sreg=0x%04x\n", __func__,
+++				cnspci->hw_pci.domain, sreg);
+++
+++			/* make sure the status bits are reset */
+++			__raw_writew(sreg, host_base + 6);
+++			__raw_writel(ereg, host_base + 0x104);
+++			return 1;
+++		}
+++	}
+++	else
+++		return 1;
+++
+++  return 0;
+++}
+++
++ static int cns3xxx_pci_read_config(struct pci_bus *bus, unsigned int devfn,
++ 				   int where, int size, u32 *val)
++ {
++@@ -108,6 +178,11 @@ static int cns3xxx_pci_read_config(struc
++ 
++ 	v = __raw_readl(base);
++ 
+++	if (check_master_abort(bus, devfn, where)) {
+++printk("<<%04d:%02x:%02x.%02x %02x(%d)= master_abort on read\n", pci_domain_nr(bus), bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn), where, size);
+++		return PCIBIOS_DEVICE_NOT_FOUND;
+++	}
+++
++ 	if (bus->number == 0 && devfn == 0 &&
++ 			(where & 0xffc) == PCI_CLASS_REVISION) {
++ 		/*
++@@ -137,11 +212,19 @@ static int cns3xxx_pci_write_config(stru
++ 		return PCIBIOS_SUCCESSFUL;
++ 
++ 	v = __raw_readl(base);
+++	if (check_master_abort(bus, devfn, where)) {
+++printk(">>%04d:%02x:%02x.%02x %02x(%d)=0x%08x master_abort on read\n", pci_domain_nr(bus), bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn), where, size, val);
+++		return PCIBIOS_DEVICE_NOT_FOUND;
+++	}
++ 
++ 	v &= ~(mask << shift);
++ 	v |= (val & mask) << shift;
++ 
++ 	__raw_writel(v, base);
+++	if (check_master_abort(bus, devfn, where)) {
+++printk(">>%04d:%02x:%02x.%02x %02x(%d)=0x%08x master_abort on write\n", pci_domain_nr(bus), bus->number, PCI_SLOT(devfn), PCI_FUNC(devfn), where, size, val);
+++		return PCIBIOS_DEVICE_NOT_FOUND;
+++	}
++ 
++ 	return PCIBIOS_SUCCESSFUL;
++ }
++@@ -360,8 +443,14 @@ static void __init cns3xxx_pcie_hw_init(
++ static int cns3xxx_pcie_abort_handler(unsigned long addr, unsigned int fsr,
++ 				      struct pt_regs *regs)
++ {
+++#if 0
+++/* R14_ABORT = PC+4 for XSCALE but not ARM11MPCORE
+++ * ignore imprecise aborts and use PCI-compatible Status register to
+++ * determine errors instead
+++ */
++ 	if (fsr & (1 << 10))
++ 		regs->ARM_pc += 4;
+++#endif
++ 	return 0;
++ }
++ 
+Index: trunk/target/linux/cns3xxx/patches/109-cns3xxx_eth_txdma.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/109-cns3xxx_eth_txdma.patch	(revision 0)
++++ trunk/target/linux/cns3xxx/patches/109-cns3xxx_eth_txdma.patch	(working copy)
+@@ -0,0 +1,201 @@
++Use an-adjusted MTU size where appropriate and resolve tx-dma issue
++
++Remove need to disable TX-DMA while setting up TS Descriptors for
++fragmented packets.  This avoids an occasional packet corruption
++issue while also providing a potential performance boost. 
++
++--- a/drivers/net/cns3xxx_eth.c
+++++ b/drivers/net/cns3xxx_eth.c
++@@ -31,6 +31,7 @@
++ #define TX_POOL_ALLOC_SIZE (sizeof(struct tx_desc) * TX_DESCS)
++ #define REGS_SIZE 336
++ #define MAX_MRU (1536 + SKB_DMA_REALIGN)
+++#define CNS3XXX_MAX_MTU (1536)
++ 
++ #define NAPI_WEIGHT 64
++ 
++@@ -510,7 +511,7 @@ static void cns3xxx_alloc_rx_buf(struct
++ 				skb_reserve(skb, SKB_DMA_REALIGN);
++ 			skb_reserve(skb, NET_IP_ALIGN);
++ 			phys = dma_map_single(NULL, skb->data,
++-				    MAX_MRU, DMA_FROM_DEVICE);
+++				    CNS3XXX_MAX_MTU, DMA_FROM_DEVICE);
++ 			if (dma_mapping_error(NULL, phys)) {
++ 				dev_kfree_skb(skb);
++ 				/* Failed to map, better luck next time */
++@@ -528,10 +529,10 @@ static void cns3xxx_alloc_rx_buf(struct
++ 		if (i == RX_DESCS - 1) {
++ 			i = 0;
++ 			desc->config0 = END_OF_RING | FIRST_SEGMENT |
++-					LAST_SEGMENT | MAX_MRU;
+++					LAST_SEGMENT | CNS3XXX_MAX_MTU;
++ 			desc = &(rx_ring)->desc[i];
++ 		} else {
++-			desc->config0 = FIRST_SEGMENT | LAST_SEGMENT | MAX_MRU;
+++			desc->config0 = FIRST_SEGMENT | LAST_SEGMENT | CNS3XXX_MAX_MTU;
++ 			i++;
++ 			desc++;
++ 		}
++@@ -610,6 +611,7 @@ static int eth_poll(struct napi_struct *
++ 		dev->stats.rx_packets++;
++ 		dev->stats.rx_bytes += length;
++ 
+++		/* RX Hardware checksum offload */
++ 		switch (desc->prot) {
++ 			case 1:
++ 			case 2:
++@@ -663,14 +665,14 @@ static int eth_xmit(struct sk_buff *skb,
++ 	int len;
++ 	char pmap = (1 << port->id);
++ 	unsigned int phys;
++-	unsigned int nr_frags = skb_shinfo(skb)->nr_frags;
+++	int nr_frags = skb_shinfo(skb)->nr_frags;
++ 	struct skb_frag_struct *frag;
++ 	unsigned int i;
++ 
++ 	if (pmap == 8)
++ 		pmap = (1 << 4);
++ 
++-	if (skb->len > MAX_MRU) {
+++	if (skb->len > CNS3XXX_MAX_MTU) {
++ 		dev_kfree_skb(skb);
++ 		dev->stats.tx_errors++;
++ 		return NETDEV_TX_OK;
++@@ -691,9 +693,9 @@ static int eth_xmit(struct sk_buff *skb,
++ 
++ 	write_unlock(&tx_lock);
++ 
++-	tx_desc = &(tx_ring)->desc[index];
++-
++ 	if (!nr_frags) {
+++		tx_desc = &(tx_ring)->desc[index];
+++
++ 		len = skb->len;
++ 
++ 		phys = dma_map_single(NULL, skb->data, len,
++@@ -714,34 +716,14 @@ static int eth_xmit(struct sk_buff *skb,
++ 				   	TCP_CHECKSUM | len;
++ 		}
++ 	} else {
+++		unsigned int config;
++ 
++-		disable_tx_dma(sw);
++-		len = skb->len - skb->data_len;
++-
++-		phys = dma_map_single(NULL, skb->data, len,
++-				      	DMA_TO_DEVICE);
++-
++-		tx_desc->sdp = phys;
++-		tx_desc->pmap = pmap;
++-		tx_ring->phys_tab[index] = phys;
++-
++-		if (index == TX_DESCS - 1) {
++-			tx_desc->config0 = END_OF_RING | FIRST_SEGMENT |
++-				   	FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
++-				   	TCP_CHECKSUM | len;
++-			index = 0;
++-			tx_desc = &(tx_ring)->desc[index];
++-		} else {
++-			tx_desc->config0 = FIRST_SEGMENT |
++-				   	FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
++-				   	TCP_CHECKSUM | len;
++-			index++;
++-			tx_desc++;
++-		}
++-
++-		for (i = 0; i < nr_frags - 1; i++) {
+++		index = ((index + nr_frags) % TX_DESCS);
+++		tx_desc = &(tx_ring)->desc[index];
++ 
++-			frag = &skb_shinfo(skb)->frags[i];
+++		/* fragments */
+++		for (i = nr_frags; i > 0; i--) {
+++			frag = &skb_shinfo(skb)->frags[i-1];
++ 			len = frag->size;
++ 
++ 			phys = dma_map_single(NULL, page_address(frag->page) + frag->page_offset, len,
++@@ -752,37 +734,41 @@ static int eth_xmit(struct sk_buff *skb,
++ 			tx_desc->pmap = pmap;
++ 			tx_ring->phys_tab[index] = phys;
++ 
++-			if (index == TX_DESCS - 1) {
++-				tx_desc->config0 = END_OF_RING |
++-			   			FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
++-			   			TCP_CHECKSUM | len;
++-				index = 0;
+++			config = FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
+++				TCP_CHECKSUM | len;
+++			if (i == nr_frags) {
+++				config |= LAST_SEGMENT;
+++				tx_ring->buff_tab[index] = skb;
+++			}
+++			if (index == TX_DESCS - 1)
+++				config |= END_OF_RING;
+++			tx_desc->config0 = config;
+++
+++			if (index == 0) {
+++				index = TX_DESCS - 1;
++ 				tx_desc = &(tx_ring)->desc[index];
++ 			} else {
++-				tx_desc->config0 = FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
++-			   			TCP_CHECKSUM | len;
++-				index++;
++-				tx_desc++;
+++				index--;
+++				tx_desc--;
++ 			}
++ 		}
++ 
++-		frag = &skb_shinfo(skb)->frags[i];
++-		len = frag->size;
+++		/* header */
+++		len = skb->len - skb->data_len;
++ 
++-		phys = dma_map_single(NULL, page_address(frag->page) + frag->page_offset, len,
++-					      DMA_TO_DEVICE);
+++		phys = dma_map_single(NULL, skb->data, len,
+++				      	DMA_TO_DEVICE);
++ 
++ 		tx_desc->sdp = phys;
++-
++ 		tx_desc->pmap = pmap;
++ 		tx_ring->phys_tab[index] = phys;
++-		tx_ring->buff_tab[index] = skb;
+++
++ 		if (index == TX_DESCS - 1) {
++-			tx_desc->config0 = END_OF_RING | LAST_SEGMENT |
+++			tx_desc->config0 = END_OF_RING | FIRST_SEGMENT |
++ 				   	FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
++ 				   	TCP_CHECKSUM | len;
++ 		} else {
++-			tx_desc->config0 = LAST_SEGMENT |
+++			tx_desc->config0 = FIRST_SEGMENT |
++ 				   	FORCE_ROUTE | IP_CHECKSUM | UDP_CHECKSUM |
++ 				   	TCP_CHECKSUM | len;
++ 		}
++@@ -878,14 +864,14 @@ static int init_rings(struct sw *sw)
++ 		if (SKB_DMA_REALIGN)
++ 			skb_reserve(skb, SKB_DMA_REALIGN);
++ 		skb_reserve(skb, NET_IP_ALIGN);
++-		desc->sdl = MAX_MRU;
+++		desc->sdl = CNS3XXX_MAX_MTU;
++ 		if (i == (RX_DESCS - 1))
++ 			desc->eor = 1;
++ 		desc->fsd = 1;
++ 		desc->lsd = 1;
++ 
++ 		desc->sdp = dma_map_single(NULL, skb->data,
++-					    MAX_MRU, DMA_FROM_DEVICE);
+++					    CNS3XXX_MAX_MTU, DMA_FROM_DEVICE);
++ 		if (dma_mapping_error(NULL, desc->sdp)) {
++ 			return -EIO;
++ 		}
++@@ -931,7 +917,7 @@ static void destroy_rings(struct sw *sw)
++ 			if (skb) {
++ 				dma_unmap_single(NULL,
++ 						 desc->sdp,
++-						 MAX_MRU, DMA_FROM_DEVICE);
+++						 CNS3XXX_MAX_MTU, DMA_FROM_DEVICE);
++ 				dev_kfree_skb(skb);
++ 			}
++ 		}
+Index: trunk/target/linux/cns3xxx/patches/110-gateworks_gsp_support.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/110-gateworks_gsp_support.patch	(revision 27590)
++++ trunk/target/linux/cns3xxx/patches/110-gateworks_gsp_support.patch	(working copy)
+@@ -28,7 +28,7 @@
+  obj-$(CONFIG_PMBUS)		+= pmbus_core.o
+ --- /dev/null
+ +++ b/drivers/hwmon/gsp.c
+-@@ -0,0 +1,308 @@
++@@ -0,0 +1,311 @@
+ +/*
+ + * A hwmon driver for the Gateworks System Peripheral
+ + * Copyright (C) 2009 Gateworks Corporation
+@@ -132,11 +132,14 @@
+ + */
+ +static inline int gsp_read(struct i2c_client *client, u8 reg)
+ +{
+-+	unsigned int adc = 0;
+++	int adc = 0;
+ +	if (reg == GSP_REG_TEMP_IN || reg > GSP_REG_CURRENT)
+ +	{
+ +		adc |= i2c_smbus_read_byte_data(client, reg);
+ +		adc |= i2c_smbus_read_byte_data(client, reg + 1) << 8;
+++		if (adc > 0x8000) { // convert neg temps from two's-complement
+++			adc = adc - 0xffff;
+++		}
+ +		return adc;
+ +	}
+ +	else
+Index: trunk/target/linux/cns3xxx/patches/200-dwc_otg.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/200-dwc_otg.patch	(revision 27590)
++++ trunk/target/linux/cns3xxx/patches/200-dwc_otg.patch	(working copy)
+@@ -7882,7 +7882,7 @@
+ +#endif
+ --- /dev/null
+ +++ b/drivers/usb/dwc/otg_hcd.c
+-@@ -0,0 +1,2735 @@
++@@ -0,0 +1,2752 @@
+ +/* ==========================================================================
+ + * $File: //dwh/usb_iip/dev/software/otg/linux/drivers/dwc_otg_hcd.c $
+ + * $Revision: #75 $
+@@ -8051,7 +8051,9 @@
+ +	dwc_otg_qh_t		*qh;
+ +	struct list_head	*qtd_item;
+ +	dwc_otg_qtd_t		*qtd;
+++	unsigned long		flags;
+ +
+++	SPIN_LOCK_IRQSAVE(&hcd->lock, flags);
+ +	list_for_each(qh_item, qh_list) {
+ +		qh = list_entry(qh_item, dwc_otg_qh_t, qh_list_entry);
+ +		for (qtd_item = qh->qtd_list.next;
+@@ -8065,6 +8067,7 @@
+ +			dwc_otg_hcd_qtd_remove_and_free(hcd, qtd);
+ +		}
+ +	}
+++	SPIN_UNLOCK_IRQRESTORE(&hcd->lock, flags);
+ +}
+ +
+ +/**
+@@ -8308,10 +8311,14 @@
+ +	hcd->regs = otg_dev->base;
+ +	hcd->self.otg_port = 1;
+ +
+++	/* Integrate TT in root hub, by default this is disbled. */
+++	hcd->has_tt = 1;
+++
+ +	/* Initialize the DWC OTG HCD. */
+ +	dwc_otg_hcd = hcd_to_dwc_otg_hcd(hcd);
+ +	dwc_otg_hcd->core_if = otg_dev->core_if;
+ +	otg_dev->hcd = dwc_otg_hcd;
+++	init_hcd_usecs(dwc_otg_hcd);
+ +
+ +	/* */
+ +	spin_lock_init(&dwc_otg_hcd->lock);
+@@ -8529,6 +8536,7 @@
+ +{
+ +	struct list_head 	*item;
+ +	dwc_otg_qh_t		*qh;
+++	unsigned long flags;
+ +
+ +	if (!qh_list->next) {
+ +		/* The list hasn't been initialized yet. */
+@@ -8538,10 +8546,12 @@
+ +	/* Ensure there are no QTDs or URBs left. */
+ +	kill_urbs_in_qh_list(hcd, qh_list);
+ +
+++	SPIN_LOCK_IRQSAVE(&hcd->lock, flags);
+ +	for (item = qh_list->next; item != qh_list; item = qh_list->next) {
+ +		qh = list_entry(item, dwc_otg_qh_t, qh_list_entry);
+ +		dwc_otg_hcd_qh_remove_and_free(hcd, qh);
+ +	}
+++	SPIN_UNLOCK_IRQRESTORE(&hcd->lock, flags);
+ +}
+ +
+ +/**
+@@ -8833,6 +8843,10 @@
+ +	urb_qtd = (dwc_otg_qtd_t *)urb->hcpriv;
+ +	qh = (dwc_otg_qh_t *)ep->hcpriv;
+ +
+++        if (urb_qtd == NULL) {
+++            SPIN_UNLOCK_IRQRESTORE(&dwc_otg_hcd->lock, flags);
+++            return 0;
+++        }
+ +#ifdef DEBUG
+ +	if (CHK_DEBUG_LEVEL(DBG_HCDV | DBG_HCD_URB)) {
+ +		dump_urb_info(urb, "dwc_otg_hcd_urb_dequeue");
+@@ -8864,15 +8878,17 @@
+ +	 */
+ +	dwc_otg_hcd_qtd_remove_and_free(dwc_otg_hcd, urb_qtd);
+ +	if (urb_qtd == qh->qtd_in_process) {
+++                /* Note that dwc_otg_hcd_qh_deactivate() locks the spin_lock again */
+++                SPIN_UNLOCK_IRQRESTORE(&dwc_otg_hcd->lock, flags);
+ +		dwc_otg_hcd_qh_deactivate(dwc_otg_hcd, qh, 0);
+ +		qh->channel = NULL;
+ +		qh->qtd_in_process = NULL;
+-+	} else if (list_empty(&qh->qtd_list)) {
+++	} else {
+++            if (list_empty(&qh->qtd_list))
+ +		dwc_otg_hcd_qh_remove(dwc_otg_hcd, qh);
+++            SPIN_UNLOCK_IRQRESTORE(&dwc_otg_hcd->lock, flags);
+ +	}
+ +
+-+	SPIN_UNLOCK_IRQRESTORE(&dwc_otg_hcd->lock, flags);
+-+
+ +	urb->hcpriv = NULL;
+ +
+ +	/* Higher layer software sets URB status. */
+@@ -8923,7 +8939,6 @@
+ +	ep->hcpriv = NULL;
+ +done:
+ +	SPIN_UNLOCK_IRQRESTORE(&dwc_otg_hcd->lock, flags);
+-+
+ +}
+ +
+ +/** Handles host mode interrupts for the DWC_otg controller. Returns IRQ_NONE if
+@@ -10080,6 +10095,7 @@
+ +	DWC_DEBUGPL(DBG_HCD, "  Select Transactions\n");
+ +#endif
+ +
+++	spin_lock(&hcd->lock);
+ +	/* Process entries in the periodic ready list. */
+ +	qh_ptr = hcd->periodic_sched_ready.next;
+ +	while (qh_ptr != &hcd->periodic_sched_ready &&
+@@ -10128,6 +10144,7 @@
+ +
+ +		hcd->non_periodic_channels++;
+ +	}
+++	spin_unlock(&hcd->lock);
+ +
+ +	return ret_val;
+ +}
+@@ -10620,7 +10637,7 @@
+ +#endif /* DWC_DEVICE_ONLY */
+ --- /dev/null
+ +++ b/drivers/usb/dwc/otg_hcd.h
+-@@ -0,0 +1,647 @@
++@@ -0,0 +1,652 @@
+ +/* ==========================================================================
+ + * $File: //dwh/usb_iip/dev/software/otg/linux/drivers/dwc_otg_hcd.h $
+ + * $Revision: #45 $
+@@ -10820,6 +10837,9 @@
+ +	/** (micro)frame at which last start split was initialized. */
+ +	uint16_t		start_split_frame;
+ +
+++	u16 speed;
+++	u16 frame_usecs[8];
+++
+ +	/** @} */
+ +
+ +	/** Entry for QH in either the periodic or non-periodic schedule. */
+@@ -10923,6 +10943,18 @@
+ +	 */
+ +	uint16_t		periodic_usecs;
+ +
+++	/*
+++	 * Total bandwidth claimed so far for all periodic transfers
+++	 * in a frame.
+++	 * This will include a mixture of HS and FS transfers.
+++	 * Units are microseconds per (micro)frame.
+++	 * We have a budget per frame and have to schedule
+++	 * transactions accordingly.
+++	 * Watch out for the fact that things are actually scheduled for the
+++	 * "next frame".
+++	 */
+++	u16 frame_usecs[8];
+++
+ +	/**
+ +	 * Frame number read from the core at SOF. The value ranges from 0 to
+ +	 * DWC_HFNUM_MAX_FRNUM.
+@@ -11084,6 +11116,7 @@
+ +/** @{ */
+ +
+ +/* Implemented in dwc_otg_hcd_queue.c */
+++extern int init_hcd_usecs(dwc_otg_hcd_t *hcd);
+ +extern dwc_otg_qh_t *dwc_otg_hcd_qh_create(dwc_otg_hcd_t *hcd, struct urb *urb);
+ +extern void dwc_otg_hcd_qh_init(dwc_otg_hcd_t *hcd, dwc_otg_qh_t *qh, struct urb *urb);
+ +extern void dwc_otg_hcd_qh_free(dwc_otg_hcd_t *hcd, dwc_otg_qh_t *qh);
+@@ -11125,21 +11158,10 @@
+ +	kfree(qtd);
+ +}
+ +
+-+/** Removes a QTD from list.
+-+ * @param[in] hcd HCD instance.
+-+ * @param[in] qtd QTD to remove from list. */
+-+static inline void dwc_otg_hcd_qtd_remove(dwc_otg_hcd_t *hcd, dwc_otg_qtd_t *qtd)
+-+{
+-+	unsigned long flags;
+-+	SPIN_LOCK_IRQSAVE(&hcd->lock, flags);
+-+	list_del(&qtd->qtd_list_entry);
+-+	SPIN_UNLOCK_IRQRESTORE(&hcd->lock, flags);
+-+}
+-+
+ +/** Remove and free a QTD */
+ +static inline void dwc_otg_hcd_qtd_remove_and_free(dwc_otg_hcd_t *hcd, dwc_otg_qtd_t *qtd)
+ +{
+-+	dwc_otg_hcd_qtd_remove(hcd, qtd);
+++	list_del(&qtd->qtd_list_entry);
+ +	dwc_otg_hcd_qtd_free(qtd);
+ +}
+ +
+@@ -11270,7 +11292,7 @@
+ +#endif /* DWC_DEVICE_ONLY */
+ --- /dev/null
+ +++ b/drivers/usb/dwc/otg_hcd_intr.c
+-@@ -0,0 +1,1826 @@
++@@ -0,0 +1,1829 @@
+ +/* ==========================================================================
+ + * $File: //dwh/usb_iip/dev/software/otg/linux/drivers/dwc_otg_hcd_intr.c $
+ + * $Revision: #70 $
+@@ -11879,6 +11901,7 @@
+ +
+ +	DWC_DEBUGPL(DBG_HCDV, "  %s(%p,%p,%d)\n", __func__, hcd, qh, free_qtd);
+ +
+++        spin_lock(&hcd->lock);
+ +	qtd = list_entry(qh->qtd_list.next, dwc_otg_qtd_t, qtd_list_entry);
+ +
+ +	if (qtd->complete_split) {
+@@ -11895,6 +11918,7 @@
+ +
+ +	qh->channel = NULL;
+ +	qh->qtd_in_process = NULL;
+++        spin_unlock(&hcd->lock);
+ +	dwc_otg_hcd_qh_deactivate(hcd, qh, continue_split);
+ +}
+ +
+@@ -12985,6 +13009,7 @@
+ +					  "for halting is unknown, hcint 0x%08x, intsts 0x%08x\n",
+ +					  __func__, hc->hc_num, hcint.d32,
+ +					  dwc_read_reg32(&hcd->core_if->core_global_regs->gintsts));
+++                               clear_hc_int(hc_regs, chhltd);
+ +			}
+ +		}
+ +	} else {
+@@ -13099,7 +13124,7 @@
+ +#endif /* DWC_DEVICE_ONLY */
+ --- /dev/null
+ +++ b/drivers/usb/dwc/otg_hcd_queue.c
+-@@ -0,0 +1,713 @@
++@@ -0,0 +1,794 @@
+ +/* ==========================================================================
+ + * $File: //dwh/usb_iip/dev/software/otg/linux/drivers/dwc_otg_hcd_queue.c $
+ + * $Revision: #33 $
+@@ -13257,6 +13282,7 @@
+ +	INIT_LIST_HEAD(&qh->qtd_list);
+ +	INIT_LIST_HEAD(&qh->qh_list_entry);
+ +	qh->channel = NULL;
+++	qh->speed = urb->dev->speed;
+ +
+ +	/* FS/LS Enpoint on HS Hub
+ +	 * NOT virtual root hub */
+@@ -13278,10 +13304,10 @@
+ +
+ +		/** @todo Account for split transfers in the bus time. */
+ +		int bytecount = dwc_hb_mult(qh->maxp) * dwc_max_packet(qh->maxp);
+-+		qh->usecs = usb_calc_bus_time(urb->dev->speed,
+-+					       usb_pipein(urb->pipe),
+-+					       (qh->ep_type == USB_ENDPOINT_XFER_ISOC),
+-+					       bytecount);
+++		qh->usecs = NS_TO_US(usb_calc_bus_time(urb->dev->speed,
+++                                                       usb_pipein(urb->pipe),
+++                                                       (qh->ep_type == USB_ENDPOINT_XFER_ISOC),
+++                                                       bytecount));
+ +
+ +		/* Start in a slightly future (micro)frame. */
+ +		qh->sched_frame = dwc_frame_num_inc(hcd->frame_number,
+@@ -13360,73 +13386,159 @@
+ +}
+ +
+ +/**
+-+ * Checks that a channel is available for a periodic transfer.
+-+ *
+-+ * @return 0 if successful, negative error code otherise.
+++ * Microframe scheduler
+++ * track the total use in hcd->frame_usecs
+++ * keep each qh use in qh->frame_usecs
+++ * when surrendering the qh then donate the time back
+ + */
+-+static int periodic_channel_available(dwc_otg_hcd_t *hcd)
+++static const u16 max_uframe_usecs[] = { 100, 100, 100, 100, 100, 100, 30, 0 };
+++
+++/*
+++ * called from dwc_otg_hcd.c:dwc_otg_hcd_init
+++ */
+++int init_hcd_usecs(dwc_otg_hcd_t *hcd)
+ +{
+-+	/*
+-+	 * Currently assuming that there is a dedicated host channnel for each
+-+	 * periodic transaction plus at least one host channel for
+-+	 * non-periodic transactions.
+-+	 */
+-+	int status;
+-+	int num_channels;
+++	int i;
+ +
+-+	num_channels = hcd->core_if->core_params->host_channels;
+-+	if ((hcd->periodic_channels + hcd->non_periodic_channels < num_channels) &&
+-+	    (hcd->periodic_channels < num_channels - 1)) {
+-+		status = 0;
+-+	}
+-+	else {
+-+		DWC_NOTICE("%s: Total channels: %d, Periodic: %d, Non-periodic: %d\n",
+-+			   __func__, num_channels, hcd->periodic_channels,
+-+			   hcd->non_periodic_channels);
+-+		status = -ENOSPC;
+-+	}
+++	for (i = 0; i < 8; i++)
+++		hcd->frame_usecs[i] = max_uframe_usecs[i];
+ +
+-+	return status;
+++	return 0;
+ +}
+ +
+-+/**
+-+ * Checks that there is sufficient bandwidth for the specified QH in the
+-+ * periodic schedule. For simplicity, this calculation assumes that all the
+-+ * transfers in the periodic schedule may occur in the same (micro)frame.
+-+ *
+-+ * @param hcd The HCD state structure for the DWC OTG controller.
+-+ * @param qh QH containing periodic bandwidth required.
+-+ *
+-+ * @return 0 if successful, negative error code otherwise.
+++static int find_single_uframe(dwc_otg_hcd_t *hcd, dwc_otg_qh_t *qh)
+++{
+++	int i;
+++	u16 utime;
+++	int t_left;
+++	int ret;
+++	int done;
+++
+++	ret = -1;
+++	utime = qh->usecs;
+++	t_left = utime;
+++	i = 0;
+++	done = 0;
+++	while (done == 0) {
+++		/* At the start hcd->frame_usecs[i] = max_uframe_usecs[i]; */
+++		if (utime <= hcd->frame_usecs[i]) {
+++			hcd->frame_usecs[i] -= utime;
+++			qh->frame_usecs[i] += utime;
+++			t_left -= utime;
+++			ret = i;
+++			done = 1;
+++			return ret;
+++		} else {
+++			i++;
+++			if (i == 8) {
+++				done = 1;
+++				ret = -1;
+++			}
+++		}
+++	}
+++	return ret;
+++}
+++
+++/*
+++ * use this for FS apps that can span multiple uframes
+ + */
+-+static int check_periodic_bandwidth(dwc_otg_hcd_t *hcd, dwc_otg_qh_t *qh)
+++static int find_multi_uframe(dwc_otg_hcd_t *hcd, dwc_otg_qh_t *qh)
+ +{
+-+	int 		status;
+-+	uint16_t 	max_claimed_usecs;
+++	int i;
+++	int j;
+++	u16 utime;
+++	int t_left;
+++	int ret;
+++	int done;
+++	u16 xtime;
+ +
+-+	status = 0;
+++	ret = -1;
+++	utime = qh->usecs;
+++	t_left = utime;
+++	i = 0;
+++	done = 0;
+++loop:
+++	while (done == 0) {
+++		if (hcd->frame_usecs[i] <= 0) {
+++			i++;
+++			if (i == 8) {
+++				done = 1;
+++				ret = -1;
+++			}
+++			goto loop;
+++		}
+ +
+-+	if (hcd->core_if->core_params->speed == DWC_SPEED_PARAM_HIGH) {
+ +		/*
+-+		 * High speed mode.
+-+		 * Max periodic usecs is 80% x 125 usec = 100 usec.
+++		 * We need n consequtive slots so use j as a start slot.
+++		 * j plus j+1 must be enough time (for now)
+ +		 */
+-+		max_claimed_usecs = 100 - qh->usecs;
+-+	} else {
+-+		/*
+-+		 * Full speed mode.
+-+		 * Max periodic usecs is 90% x 1000 usec = 900 usec.
+-+		 */
+-+		max_claimed_usecs = 900 - qh->usecs;
+++		xtime = hcd->frame_usecs[i];
+++		for (j = i + 1; j < 8; j++) {
+++			/*
+++			 * if we add this frame remaining time to xtime we may
+++			 * be OK, if not we need to test j for a complete frame.
+++			 */
+++			if ((xtime + hcd->frame_usecs[j]) < utime) {
+++				if (hcd->frame_usecs[j] < max_uframe_usecs[j]) {
+++					j = 8;
+++					ret = -1;
+++					continue;
+++				}
+++			}
+++			if (xtime >= utime) {
+++				ret = i;
+++				j = 8;	/* stop loop with a good value ret */
+++				continue;
+++			}
+++			/* add the frame time to x time */
+++			xtime += hcd->frame_usecs[j];
+++			/* we must have a fully available next frame or break */
+++			if ((xtime < utime) &&
+++			    (hcd->frame_usecs[j] == max_uframe_usecs[j])) {
+++				ret = -1;
+++				j = 8;	/* stop loop with a bad value ret */
+++				continue;
+++			}
+++		}
+++		if (ret >= 0) {
+++			t_left = utime;
+++			for (j = i; (t_left > 0) && (j < 8); j++) {
+++				t_left -= hcd->frame_usecs[j];
+++				if (t_left <= 0) {
+++					qh->frame_usecs[j] +=
+++					    hcd->frame_usecs[j] + t_left;
+++					hcd->frame_usecs[j] = -t_left;
+++					ret = i;
+++					done = 1;
+++				} else {
+++					qh->frame_usecs[j] +=
+++					    hcd->frame_usecs[j];
+++					hcd->frame_usecs[j] = 0;
+++				}
+++			}
+++		} else {
+++			i++;
+++			if (i == 8) {
+++				done = 1;
+++				ret = -1;
+++			}
+++		}
+ +	}
+++	return ret;
+++}
+ +
+-+	if (hcd->periodic_usecs > max_claimed_usecs) {
+-+		DWC_NOTICE("%s: already claimed usecs %d, required usecs %d\n",
+-+			   __func__, hcd->periodic_usecs, qh->usecs);
+-+		status = -ENOSPC;
+-+	}
+++static int find_uframe(dwc_otg_hcd_t *hcd, dwc_otg_qh_t *qh)
+++{
+++	int ret = -1;
+ +
+-+	return status;
+++	if (qh->speed == USB_SPEED_HIGH)
+++		/* if this is a hs transaction we need a full frame */
+++		ret = find_single_uframe(hcd, qh);
+++	else
+++		/* FS transaction may need a sequence of frames */
+++		ret = find_multi_uframe(hcd, qh);
+++
+++	return ret;
+ +}
+ +
+ +/**
+@@ -13462,59 +13574,56 @@
+ +
+ +/**
+ + * Schedules an interrupt or isochronous transfer in the periodic schedule.
+-+ *
+-+ * @param hcd The HCD state structure for the DWC OTG controller.
+-+ * @param qh QH for the periodic transfer. The QH should already contain the
+-+ * scheduling information.
+-+ *
+-+ * @return 0 if successful, negative error code otherwise.
+ + */
+ +static int schedule_periodic(dwc_otg_hcd_t *hcd, dwc_otg_qh_t *qh)
+ +{
+-+	int status = 0;
+++	int status;
+++	struct usb_bus *bus = hcd_to_bus(dwc_otg_hcd_to_hcd(hcd));
+++	int frame;
+ +
+-+	status = periodic_channel_available(hcd);
+-+	if (status) {
+-+		DWC_NOTICE("%s: No host channel available for periodic "
+-+			   "transfer.\n", __func__);
+-+		return status;
+++	status = find_uframe(hcd, qh);
+++	frame = -1;
+++	if (status == 0) {
+++		frame = 7;
+++	} else {
+++		if (status > 0)
+++			frame = status - 1;
+ +	}
+-+
+-+	status = check_periodic_bandwidth(hcd, qh);
+++	/* Set the new frame up */
+++	if (frame > -1) {
+++		qh->sched_frame &= ~0x7;
+++		qh->sched_frame |= (frame & 7);
+++	}
+++	if (status != -1)
+++		status = 0;
+ +	if (status) {
+-+		DWC_NOTICE("%s: Insufficient periodic bandwidth for "
+-+			   "periodic transfer.\n", __func__);
+++		pr_notice("%s: Insufficient periodic bandwidth for "
+++			  "periodic transfer.\n", __func__);
+ +		return status;
+ +	}
+-+
+ +	status = check_max_xfer_size(hcd, qh);
+ +	if (status) {
+-+		DWC_NOTICE("%s: Channel max transfer size too small "
+-+			    "for periodic transfer.\n", __func__);
+++		pr_notice("%s: Channel max transfer size too small "
+++			  "for periodic transfer.\n", __func__);
+ +		return status;
+ +	}
+-+
+ +	/* Always start in the inactive schedule. */
+ +	list_add_tail(&qh->qh_list_entry, &hcd->periodic_sched_inactive);
+ +
+-+	/* Reserve the periodic channel. */
+-+	hcd->periodic_channels++;
+-+
+ +	/* Update claimed usecs per (micro)frame. */
+ +	hcd->periodic_usecs += qh->usecs;
+ +
+-+	/* Update average periodic bandwidth claimed and # periodic reqs for usbfs. */
+-+	hcd_to_bus(dwc_otg_hcd_to_hcd(hcd))->bandwidth_allocated += qh->usecs / qh->interval;
+-+	if (qh->ep_type == USB_ENDPOINT_XFER_INT) {
+-+		hcd_to_bus(dwc_otg_hcd_to_hcd(hcd))->bandwidth_int_reqs++;
+-+		DWC_DEBUGPL(DBG_HCD, "Scheduled intr: qh %p, usecs %d, period %d\n",
+-+			    qh, qh->usecs, qh->interval);
+-+	} else {
+-+		hcd_to_bus(dwc_otg_hcd_to_hcd(hcd))->bandwidth_isoc_reqs++;
+-+		DWC_DEBUGPL(DBG_HCD, "Scheduled isoc: qh %p, usecs %d, period %d\n",
+-+			    qh, qh->usecs, qh->interval);
+-+	}
+++	/*
+++	 * Update average periodic bandwidth claimed and # periodic reqs for
+++	 * usbfs.
+++	 */
+++	bus->bandwidth_allocated += qh->usecs / qh->interval;
+ +
+++	if (qh->ep_type == USB_ENDPOINT_XFER_INT)
+++		bus->bandwidth_int_reqs++;
+++	else
+++		bus->bandwidth_isoc_reqs++;
+++
+ +	return status;
+ +}
+ +
+@@ -13564,32 +13673,29 @@
+ +
+ +/**
+ + * Removes an interrupt or isochronous transfer from the periodic schedule.
+-+ *
+-+ * @param hcd The HCD state structure for the DWC OTG controller.
+-+ * @param qh QH for the periodic transfer.
+ + */
+ +static void deschedule_periodic(dwc_otg_hcd_t *hcd, dwc_otg_qh_t *qh)
+ +{
+++	struct usb_bus *bus = hcd_to_bus(dwc_otg_hcd_to_hcd(hcd));
+++	int i;
+++
+ +	list_del_init(&qh->qh_list_entry);
+-+
+-+	/* Release the periodic channel reservation. */
+-+	hcd->periodic_channels--;
+-+
+ +	/* Update claimed usecs per (micro)frame. */
+ +	hcd->periodic_usecs -= qh->usecs;
+++	for (i = 0; i < 8; i++) {
+++		hcd->frame_usecs[i] += qh->frame_usecs[i];
+++		qh->frame_usecs[i] = 0;
+++	}
+++	/*
+++	 * Update average periodic bandwidth claimed and # periodic reqs for
+++	 * usbfs.
+++	 */
+++	bus->bandwidth_allocated -= qh->usecs / qh->interval;
+ +
+-+	/* Update average periodic bandwidth claimed and # periodic reqs for usbfs. */
+-+	hcd_to_bus(dwc_otg_hcd_to_hcd(hcd))->bandwidth_allocated -= qh->usecs / qh->interval;
+-+
+-+	if (qh->ep_type == USB_ENDPOINT_XFER_INT) {
+-+		hcd_to_bus(dwc_otg_hcd_to_hcd(hcd))->bandwidth_int_reqs--;
+-+		DWC_DEBUGPL(DBG_HCD, "Descheduled intr: qh %p, usecs %d, period %d\n",
+-+			    qh, qh->usecs, qh->interval);
+-+	} else {
+-+		hcd_to_bus(dwc_otg_hcd_to_hcd(hcd))->bandwidth_isoc_reqs--;
+-+		DWC_DEBUGPL(DBG_HCD, "Descheduled isoc: qh %p, usecs %d, period %d\n",
+-+			    qh, qh->usecs, qh->interval);
+-+	}
+++	if (qh->ep_type == USB_ENDPOINT_XFER_INT)
+++		bus->bandwidth_int_reqs--;
+++	else
+++		bus->bandwidth_isoc_reqs--;
+ +}
+ +
+ +/**
+Index: trunk/target/linux/cns3xxx/patches/300-smp_support.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/300-smp_support.patch	(revision 0)
++++ trunk/target/linux/cns3xxx/patches/300-smp_support.patch	(working copy)
+@@ -0,0 +1,63 @@
++--- a/arch/arm/Kconfig
+++++ b/arch/arm/Kconfig
++@@ -312,7 +312,7 @@ config ARCH_CLPS711X
++ 
++ config ARCH_CNS3XXX
++ 	bool "Cavium Networks CNS3XXX family"
++-	select CPU_V6
+++	select CPU_V6K
++ 	select ARCH_WANT_OPTIONAL_GPIOLIB
++ 	select GENERIC_CLOCKEVENTS
++ 	select ARM_GIC
++--- a/arch/arm/mach-cns3xxx/localtimer.c
+++++ b/arch/arm/mach-cns3xxx/localtimer.c
++@@ -22,8 +22,9 @@
++ /*
++  * Setup the local clock events for a CPU.
++  */
++-void __cpuinit local_timer_setup(struct clock_event_device *evt)
+++int __cpuinit local_timer_setup(struct clock_event_device *evt)
++ {
++ 	evt->irq = IRQ_LOCALTIMER;
++ 	twd_timer_setup(evt);
+++	return 0;
++ }
++--- a/drivers/tty/serial/8250.c
+++++ b/drivers/tty/serial/8250.c
++@@ -1785,6 +1785,7 @@ static void serial8250_backup_timeout(un
++ 	unsigned int iir, ier = 0, lsr;
++ 	unsigned long flags;
++ 
+++	spin_lock_irqsave(&up->port.lock, flags);
++ 	/*
++ 	 * Must disable interrupts or else we risk racing with the interrupt
++ 	 * based handler.
++@@ -1802,10 +1803,8 @@ static void serial8250_backup_timeout(un
++ 	 * the "Diva" UART used on the management processor on many HP
++ 	 * ia64 and parisc boxes.
++ 	 */
++-	spin_lock_irqsave(&up->port.lock, flags);
++ 	lsr = serial_in(up, UART_LSR);
++ 	up->lsr_saved_flags |= lsr & LSR_SAVE_FLAGS;
++-	spin_unlock_irqrestore(&up->port.lock, flags);
++ 	if ((iir & UART_IIR_NO_INT) && (up->ier & UART_IER_THRI) &&
++ 	    (!uart_circ_empty(&up->port.state->xmit) || up->port.x_char) &&
++ 	    (lsr & UART_LSR_THRE)) {
++@@ -1813,12 +1812,14 @@ static void serial8250_backup_timeout(un
++ 		iir |= UART_IIR_THRI;
++ 	}
++ 
++-	if (!(iir & UART_IIR_NO_INT))
++-		serial8250_handle_port(up);
++-
++ 	if (is_real_interrupt(up->port.irq))
++ 		serial_out(up, UART_IER, ier);
++ 
+++	spin_unlock_irqrestore(&up->port.lock, flags);
+++
+++	if (!(iir & UART_IIR_NO_INT))
+++		serial8250_handle_port(up);
+++
++ 	/* Standard timer interval plus 0.2s to keep the port running */
++ 	mod_timer(&up->timer,
++ 		jiffies + uart_poll_timeout(&up->port) + HZ / 5);
+Index: trunk/target/linux/cns3xxx/patches/301-fiq_cache_maint.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/301-fiq_cache_maint.patch	(revision 0)
++++ trunk/target/linux/cns3xxx/patches/301-fiq_cache_maint.patch	(working copy)
+@@ -0,0 +1,468 @@
++--- a/arch/arm/include/asm/cacheflush.h
+++++ b/arch/arm/include/asm/cacheflush.h
++@@ -17,6 +17,10 @@
++ #include <asm/cachetype.h>
++ #include <asm/outercache.h>
++ 
+++#ifdef CONFIG_SMP
+++#include <asm/smp.h>
+++#endif
+++
++ #define CACHE_COLOUR(vaddr)	((vaddr & (SHMLBA - 1)) >> PAGE_SHIFT)
++ 
++ /*
++@@ -125,6 +129,15 @@ extern struct cpu_cache_fns cpu_cache;
++ #define __cpuc_coherent_user_range	cpu_cache.coherent_user_range
++ #define __cpuc_flush_dcache_area	cpu_cache.flush_kern_dcache_area
++ 
+++
+++#ifdef CONFIG_SMP1
+++
+++#define dmac_map_area smp_dma_map_area
+++#define dmac_unmap_area smp_dma_unmap_area
+++#define dmac_flush_range smp_dma_flush_range
+++
+++#else
+++
++ /*
++  * These are private to the dma-mapping API.  Do not use directly.
++  * Their sole purpose is to ensure that data held in the cache
++@@ -135,6 +148,8 @@ extern struct cpu_cache_fns cpu_cache;
++ #define dmac_unmap_area			cpu_cache.dma_unmap_area
++ #define dmac_flush_range		cpu_cache.dma_flush_range
++ 
+++#endif
+++
++ #else
++ 
++ extern void __cpuc_flush_icache_all(void);
++--- a/arch/arm/mach-cns3xxx/Makefile
+++++ b/arch/arm/mach-cns3xxx/Makefile
++@@ -2,6 +2,6 @@ obj-$(CONFIG_ARCH_CNS3XXX)		+= core.o pm
++ obj-$(CONFIG_PCI)			+= pcie.o
++ obj-$(CONFIG_MACH_CNS3420VB)		+= cns3420vb.o
++ obj-$(CONFIG_MACH_GW2388)		+= laguna.o
++-obj-$(CONFIG_SMP)			+= platsmp.o headsmp.o
+++obj-$(CONFIG_SMP)			+= platsmp.o headsmp.o cns3xxx_fiq.o
++ obj-$(CONFIG_HOTPLUG_CPU)		+= hotplug.o
++ obj-$(CONFIG_LOCAL_TIMERS)		+= localtimer.o
++--- /dev/null
+++++ b/arch/arm/mach-cns3xxx/cns3xxx_fiq.S
++@@ -0,0 +1,97 @@
+++/*
+++ *  linux/arch/arm/lib/floppydma.S
+++ *
+++ *  Copyright (C) 1995, 1996 Russell King
+++ *
+++ * This program is free software; you can redistribute it and/or modify
+++ * it under the terms of the GNU General Public License version 2 as
+++ * published by the Free Software Foundation.
+++ */
+++#include <linux/linkage.h>
+++#include <asm/assembler.h>
+++#include <asm/asm-offsets.h>
+++
+++#define D_CACHE_LINE_SIZE 32
+++
+++	.text
+++
+++/*
+++ * R8  - DMA Start Address
+++ * R9  - DMA Length
+++ * R10 - DMA Direction
+++ * R11 - DMA type
+++ * R12 - fiq_buffer Address
+++ * R13 - DMA type Address
+++*/
+++
+++	.global	cns3xxx_fiq_end
+++ENTRY(cns3xxx_fiq_start)
+++	mov r8, #0
+++	str r8, [r13]
+++
+++	ldr r9, [r12]
+++	ldr r8, [r9]
+++	add r8, r8, #1
+++	str r8, [r9]
+++
+++	ldmib r12, {r8, r9, r10}
+++	and r11, r10, #0x3000000
+++	and r10, r10, #0xff
+++
+++	teq r11, #0x1000000
+++	beq cns3xxx_dma_map_area
+++	teq r11, #0x2000000
+++	beq cns3xxx_dma_unmap_area
+++	b cns3xxx_dma_flush_range
+++
+++cns3xxx_fiq_exit:
+++	mov r8, #0
+++	str r8, [r12, #12]
+++	mcr p15, 0, r8, c7, c10, 4    @ drain write buffer
+++	subs pc, lr, #4
+++
+++cns3xxx_dma_map_area:
+++	add r9, r9, r8
+++	teq r10, #DMA_FROM_DEVICE
+++	beq cns3xxx_dma_inv_range
+++	b cns3xxx_dma_clean_range
+++
+++cns3xxx_dma_unmap_area:
+++	add r9, r9, r8
+++	teq r10, #DMA_TO_DEVICE
+++	bne cns3xxx_dma_inv_range
+++	b cns3xxx_fiq_exit
+++
+++cns3xxx_dma_flush_range:
+++	bic r8, r8, #D_CACHE_LINE_SIZE - 1
+++1:
+++	mcr p15, 0, r8, c7, c14, 1   @ clean & invalidate D line
+++	add r8, r8, #D_CACHE_LINE_SIZE
+++	cmp r8, r9
+++	blo 1b
+++	b cns3xxx_fiq_exit
+++
+++cns3xxx_dma_clean_range:
+++	bic r8, r8, #D_CACHE_LINE_SIZE - 1
+++1:
+++	mcr p15, 0, r8, c7, c10, 1    @ clean D line
+++	add r8, r8, #D_CACHE_LINE_SIZE
+++	cmp r8, r9
+++	blo 1b
+++	b cns3xxx_fiq_exit
+++
+++cns3xxx_dma_inv_range:
+++	tst r8, #D_CACHE_LINE_SIZE - 1
+++	bic r8, r8, #D_CACHE_LINE_SIZE - 1
+++	mcrne p15, 0, r8, c7, c10, 1    @ clean D line
+++	tst r9, #D_CACHE_LINE_SIZE - 1
+++	bic r9, r9, #D_CACHE_LINE_SIZE - 1
+++	mcrne p15, 0, r9, c7, c14, 1    @ clean & invalidate D line
+++1:
+++	mcr p15, 0, r8, c7, c6, 1   @ invalidate D line
+++	add r8, r8, #D_CACHE_LINE_SIZE
+++	cmp r8, r9
+++	blo 1b
+++	b cns3xxx_fiq_exit
+++
+++cns3xxx_fiq_end:
++--- a/arch/arm/mach-cns3xxx/include/mach/cns3xxx.h
+++++ b/arch/arm/mach-cns3xxx/include/mach/cns3xxx.h
++@@ -294,6 +294,7 @@
++ #define MISC_PCIE_INT_MASK(x)			MISC_MEM_MAP(0x978 + (x) * 0x100)
++ #define MISC_PCIE_INT_STATUS(x)			MISC_MEM_MAP(0x97C + (x) * 0x100)
++ 
+++#define MISC_FIQ_CPU(x)				MISC_MEM_MAP(0xA58 - (x) * 0x4)
++ /*
++  * Power management and clock control
++  */
++--- a/arch/arm/mach-cns3xxx/include/mach/smp.h
+++++ b/arch/arm/mach-cns3xxx/include/mach/smp.h
++@@ -10,4 +10,9 @@ static inline void smp_cross_call(const
++ {
++ 	gic_raise_softirq(mask, ipi);
++ }
+++
+++extern void smp_dma_map_area(const void *, size_t, int);
+++extern void smp_dma_unmap_area(const void *, size_t, int);
+++extern void smp_dma_flush_range(const void *, const void *);
+++
++ #endif
++--- a/arch/arm/mach-cns3xxx/platsmp.c
+++++ b/arch/arm/mach-cns3xxx/platsmp.c
++@@ -25,9 +25,27 @@
++ #include <mach/hardware.h>
++ #include <mach/cns3xxx.h>
++ 
+++#include <asm/fiq.h>
+++
++ #include "core.h"
++ 
+++static struct fiq_handler fh = {
+++	.name = "cns3xxx-fiq"
+++};
+++
+++static unsigned int fiq_buffer[8];
+++
+++#define FIQ_ENABLED         0x80000000
+++#define FIQ_GENERATE				0x00010000
+++#define CNS3XXX_MAP_AREA    0x01000000
+++#define CNS3XXX_UNMAP_AREA  0x02000000
+++#define CNS3XXX_FLUSH_RANGE 0x03000000
+++
++ extern void cns3xxx_secondary_startup(void);
+++extern unsigned char cns3xxx_fiq_start, cns3xxx_fiq_end;
+++extern unsigned int fiq_number[2];
+++extern struct cpu_cache_fns cpu_cache;
+++struct cpu_cache_fns cpu_cache_save;
++ 
++ #define SCU_CPU_STATUS 0x08
++ static void __iomem *scu_base;
++@@ -38,6 +56,44 @@ static void __iomem *scu_base;
++  */
++ volatile int __cpuinitdata pen_release = -1;
++ 
+++static void __init cns3xxx_set_fiq_regs(void)
+++{
+++	struct pt_regs FIQ_regs;
+++	unsigned int cpu = smp_processor_id();
+++
+++	if (cpu) {
+++		FIQ_regs.ARM_ip = (unsigned int)&fiq_buffer[4];
+++		FIQ_regs.ARM_sp = (unsigned int)MISC_FIQ_CPU(0);
+++	} else {
+++		FIQ_regs.ARM_ip = (unsigned int)&fiq_buffer[0];
+++		FIQ_regs.ARM_sp = (unsigned int)MISC_FIQ_CPU(1);
+++	}
+++	set_fiq_regs(&FIQ_regs);
+++}
+++
+++static void __init cns3xxx_init_fiq(void)
+++{
+++	void *fiqhandler_start;
+++	unsigned int fiqhandler_length;
+++	int ret;
+++
+++	fiqhandler_start = &cns3xxx_fiq_start;
+++	fiqhandler_length = &cns3xxx_fiq_end - &cns3xxx_fiq_start;
+++
+++	ret = claim_fiq(&fh);
+++
+++	if (ret) {
+++		return;
+++	}
+++
+++	set_fiq_handler(fiqhandler_start, fiqhandler_length);
+++	fiq_buffer[0] = (unsigned int)&fiq_number[0];
+++	fiq_buffer[3] = 0;
+++	fiq_buffer[4] = (unsigned int)&fiq_number[1];
+++	fiq_buffer[7] = 0;
+++}
+++
+++
++ /*
++  * Write pen_release in a way that is guaranteed to be visible to all
++  * observers, irrespective of whether they're taking part in coherency
++@@ -63,12 +119,24 @@ void __cpuinit platform_secondary_init(u
++ 	gic_secondary_init(0);
++ 
++ 	/*
+++	 * Setup Secondary Core FIQ regs
+++	 */
+++	cns3xxx_set_fiq_regs();
+++
+++	/*
++ 	 * let the primary processor know we're out of the
++ 	 * pen, then head off into the C entry point
++ 	 */
++ 	write_pen_release(-1);
++ 
++ 	/*
+++	 * Fixup DMA Operations
+++	 *
+++	 */
+++	cpu_cache.dma_map_area = (void *)smp_dma_map_area;
+++	cpu_cache.dma_unmap_area = (void *)smp_dma_unmap_area;
+++	cpu_cache.dma_flush_range = (void *)smp_dma_flush_range;
+++	/*
++ 	 * Synchronise with the boot thread.
++ 	 */
++ 	spin_lock(&boot_lock);
++@@ -173,4 +241,112 @@ void __init platform_smp_prepare_cpus(un
++ 	 */
++ 	__raw_writel(virt_to_phys(cns3xxx_secondary_startup),
++ 			(void __iomem *)(0xFFF07000 + 0x0600));
+++
+++	/*
+++	 * Setup FIQ's for main cpu
+++	 */
+++	cns3xxx_init_fiq();
+++	cns3xxx_set_fiq_regs();
+++	memcpy((void *)&cpu_cache_save, (void *)&cpu_cache, sizeof(struct cpu_cache_fns));
+++}
+++
+++
+++static inline unsigned long cns3xxx_cpu_id(void)
+++{
+++	unsigned long cpu;
+++
+++	asm volatile(
+++		" mrc p15, 0, %0, c0, c0, 5  @ cns3xxx_cpu_id\n"
+++		: "=r" (cpu) : : "memory", "cc");
+++	return (cpu & 0xf);
+++}
+++
+++void smp_dma_map_area(const void *addr, size_t size, int dir)
+++{
+++	unsigned int cpu;
+++	unsigned long flags;
+++	raw_local_irq_save(flags);
+++	cpu = cns3xxx_cpu_id();
+++	if (cpu) {
+++		fiq_buffer[1] = (unsigned int)addr;
+++		fiq_buffer[2] = size;
+++		fiq_buffer[3] = dir | CNS3XXX_MAP_AREA | FIQ_ENABLED;
+++		smp_mb();
+++		__raw_writel(FIQ_GENERATE, MISC_FIQ_CPU(1));
+++
+++		cpu_cache_save.dma_map_area(addr, size, dir);
+++		while ((fiq_buffer[3]) & FIQ_ENABLED) { barrier(); }
+++	} else {
+++
+++		fiq_buffer[5] = (unsigned int)addr;
+++		fiq_buffer[6] = size;
+++		fiq_buffer[7] = dir | CNS3XXX_MAP_AREA | FIQ_ENABLED;
+++		smp_mb();
+++		__raw_writel(FIQ_GENERATE, MISC_FIQ_CPU(0));
+++
+++		cpu_cache_save.dma_map_area(addr, size, dir);
+++		while ((fiq_buffer[7]) & FIQ_ENABLED) { barrier(); }
+++	}
+++	raw_local_irq_restore(flags);
+++}
+++
+++void smp_dma_unmap_area(const void *addr, size_t size, int dir)
+++{
+++	unsigned int cpu;
+++	unsigned long flags;
+++
+++	raw_local_irq_save(flags);
+++	cpu = cns3xxx_cpu_id();
+++	if (cpu) {
+++
+++		fiq_buffer[1] = (unsigned int)addr;
+++		fiq_buffer[2] = size;
+++		fiq_buffer[3] = dir | CNS3XXX_UNMAP_AREA | FIQ_ENABLED;
+++		smp_mb();
+++		__raw_writel(FIQ_GENERATE, MISC_FIQ_CPU(1));
+++
+++		cpu_cache_save.dma_unmap_area(addr, size, dir);
+++		while ((fiq_buffer[3]) & FIQ_ENABLED) { barrier(); }
+++	} else {
+++
+++		fiq_buffer[5] = (unsigned int)addr;
+++		fiq_buffer[6] = size;
+++		fiq_buffer[7] = dir | CNS3XXX_UNMAP_AREA | FIQ_ENABLED;
+++		smp_mb();
+++		__raw_writel(FIQ_GENERATE, MISC_FIQ_CPU(0));
+++
+++		cpu_cache_save.dma_unmap_area(addr, size, dir);
+++		while ((fiq_buffer[7]) & FIQ_ENABLED) { barrier(); }
+++	}
+++	raw_local_irq_restore(flags);
+++}
+++
+++void smp_dma_flush_range(const void *start, const void *end)
+++{
+++	unsigned int cpu;
+++	unsigned long flags;
+++	raw_local_irq_save(flags);
+++	cpu = cns3xxx_cpu_id();
+++	if (cpu) {
+++
+++		fiq_buffer[1] = (unsigned int)start;
+++		fiq_buffer[2] = (unsigned int)end;
+++		fiq_buffer[3] = CNS3XXX_FLUSH_RANGE | FIQ_ENABLED;
+++		smp_mb();
+++		__raw_writel(FIQ_GENERATE, MISC_FIQ_CPU(1));
+++
+++		cpu_cache_save.dma_flush_range(start, end);
+++		while ((fiq_buffer[3]) & FIQ_ENABLED) { barrier(); }
+++	} else {
+++
+++		fiq_buffer[5] = (unsigned int)start;
+++		fiq_buffer[6] = (unsigned int)end;
+++		fiq_buffer[7] = CNS3XXX_FLUSH_RANGE | FIQ_ENABLED;
+++		smp_mb();
+++		__raw_writel(FIQ_GENERATE, MISC_FIQ_CPU(0));
+++
+++		cpu_cache_save.dma_flush_range(start, end);
+++		while ((fiq_buffer[7]) & FIQ_ENABLED) { barrier(); }
+++	}
+++	raw_local_irq_restore(flags);
++ }
++--- a/arch/arm/mm/Kconfig
+++++ b/arch/arm/mm/Kconfig
++@@ -775,7 +775,7 @@ config NEEDS_SYSCALL_FOR_CMPXCHG
++ 
++ config DMA_CACHE_RWFO
++ 	bool "Enable read/write for ownership DMA cache maintenance"
++-	depends on CPU_V6K && SMP
+++	depends on CPU_V6K && SMP && !ARCH_CNS3XXX
++ 	default y
++ 	help
++ 	  The Snoop Control Unit on ARM11MPCore does not detect the
++--- a/arch/arm/Kconfig
+++++ b/arch/arm/Kconfig
++@@ -318,6 +318,7 @@ config ARCH_CNS3XXX
++ 	select ARM_GIC
++ 	select MIGHT_HAVE_PCI
++ 	select PCI_DOMAINS if PCI
+++	select FIQ
++ 	help
++ 	  Support for Cavium Networks CNS3XXX platform.
++ 
++--- a/arch/arm/mach-cns3xxx/include/mach/irqs.h
+++++ b/arch/arm/mach-cns3xxx/include/mach/irqs.h
++@@ -14,6 +14,7 @@
++ #define IRQ_LOCALTIMER		29
++ #define IRQ_LOCALWDOG		30
++ #define IRQ_TC11MP_GIC_START	32
+++#define FIQ_START 0
++ 
++ #include <mach/cns3xxx.h>
++ 
++--- a/arch/arm/kernel/fiq.c
+++++ b/arch/arm/kernel/fiq.c
++@@ -49,6 +49,8 @@
++ 
++ static unsigned long no_fiq_insn;
++ 
+++unsigned int fiq_number[2] = {0, 0};
+++
++ /* Default reacquire function
++  * - we always relinquish FIQ control
++  * - we always reacquire FIQ control
++@@ -70,9 +72,12 @@ static struct fiq_handler *current_fiq =
++ 
++ int show_fiq_list(struct seq_file *p, int prec)
++ {
++-	if (current_fiq != &default_owner)
++-		seq_printf(p, "%*s:              %s\n", prec, "FIQ",
++-			current_fiq->name);
+++	if (current_fiq != &default_owner) {
+++		seq_printf(p, "%*s: ", prec, "FIQ");
+++		seq_printf(p, "%10u ", fiq_number[0]);
+++		seq_printf(p, "%10u ", fiq_number[1]);
+++		seq_printf(p, "      %s\n", current_fiq->name);
+++	}
++ 
++ 	return 0;
++ }
++--- a/arch/arm/kernel/smp.c
+++++ b/arch/arm/kernel/smp.c
++@@ -400,13 +400,13 @@ void show_ipi_list(struct seq_file *p, i
++ 	unsigned int cpu, i;
++ 
++ 	for (i = 0; i < NR_IPI; i++) {
++-		seq_printf(p, "%*s%u: ", prec - 1, "IPI", i);
+++		seq_printf(p, "%*s%u:", prec - 1, "IPI", i);
++ 
++ 		for_each_present_cpu(cpu)
++ 			seq_printf(p, "%10u ",
++ 				   __get_irq_stat(cpu, ipi_irqs[i]));
++ 
++-		seq_printf(p, " %s\n", ipi_types[i]);
+++		seq_printf(p, "      %s\n", ipi_types[i]);
++ 	}
++ }
++ 
++@@ -461,7 +461,7 @@ void show_local_irqs(struct seq_file *p,
++ 	for_each_present_cpu(cpu)
++ 		seq_printf(p, "%10u ", __get_irq_stat(cpu, local_timer_irqs));
++ 
++-	seq_printf(p, " Local timer interrupts\n");
+++	seq_printf(p, "      Local timer interrupts\n");
++ }
++ #endif
++ 
+Index: trunk/target/linux/cns3xxx/patches/302-cns3xxx_gpio_irq.patch
+===================================================================
+--- trunk/target/linux/cns3xxx/patches/302-cns3xxx_gpio_irq.patch	(revision 0)
++++ trunk/target/linux/cns3xxx/patches/302-cns3xxx_gpio_irq.patch	(working copy)
+@@ -0,0 +1,507 @@
++--- a/arch/arm/mach-cns3xxx/core.c
+++++ b/arch/arm/mach-cns3xxx/core.c
++@@ -18,7 +18,6 @@
++ #include <asm/hardware/cache-l2x0.h>
++ #include <asm/hardware/gic.h>
++ #include <asm/smp_twd.h>
++-#include <asm/gpio.h>
++ #include <mach/cns3xxx.h>
++ #include "core.h"
++ 
++@@ -44,16 +43,6 @@ static struct map_desc cns3xxx_io_desc[]
++ 		.length		= SZ_4K,
++ 		.type		= MT_DEVICE,
++ 	}, {
++-		.virtual	= CNS3XXX_GPIOA_BASE_VIRT,
++-		.pfn		= __phys_to_pfn(CNS3XXX_GPIOA_BASE),
++-		.length		= SZ_4K,
++-		.type		= MT_DEVICE,
++-	}, {
++-		.virtual	= CNS3XXX_GPIOB_BASE_VIRT,
++-		.pfn		= __phys_to_pfn(CNS3XXX_GPIOB_BASE),
++-		.length		= SZ_4K,
++-		.type		= MT_DEVICE,
++-	}, {
++ 		.virtual	= CNS3XXX_MISC_BASE_VIRT,
++ 		.pfn		= __phys_to_pfn(CNS3XXX_MISC_BASE),
++ 		.length		= SZ_4K,
++@@ -91,88 +80,6 @@ static struct map_desc cns3xxx_io_desc[]
++ 	},
++ };
++ 
++-int gpio_to_irq(int gpio)
++-{
++-	if (gpio > 63)
++-		return -EINVAL;
++-
++-	if (gpio < 32)
++-		return IRQ_CNS3XXX_GPIOA;
++-	else
++-		return IRQ_CNS3XXX_GPIOB;
++-}
++-EXPORT_SYMBOL(gpio_to_irq);
++-
++-int irq2gpio(int irq)
++-{
++-	if (irq == IRQ_CNS3XXX_GPIOA)
++-		return 0;
++-	else if (irq == IRQ_CNS3XXX_GPIOB)
++-		return 32;
++-	else
++-		return -EINVAL;
++-}
++-EXPORT_SYMBOL(irq2gpio);
++-
++-static inline void gpio_line_config(u8 line, u32 direction)
++-{
++-	u32 reg;
++-	if (direction) {
++-		if (line < 32) {
++-			reg = __raw_readl(CNS3XXX_GPIOA_BASE_VIRT + CNS3XXX_GPIO_DIR);
++-			reg |= (1 << line);
++-			__raw_writel(reg, CNS3XXX_GPIOA_BASE_VIRT + CNS3XXX_GPIO_DIR);
++-		} else {
++-			reg = __raw_readl(CNS3XXX_GPIOB_BASE_VIRT + CNS3XXX_GPIO_DIR);
++-			reg |= (1 << (line - 32));
++-			__raw_writel(reg, CNS3XXX_GPIOB_BASE_VIRT + CNS3XXX_GPIO_DIR);
++-		}
++-	} else {
++-		if (line < 32) {
++-			reg = __raw_readl(CNS3XXX_GPIOA_BASE_VIRT + CNS3XXX_GPIO_DIR);
++-			reg &= ~(1 << line);
++-			__raw_writel(reg, CNS3XXX_GPIOA_BASE_VIRT + CNS3XXX_GPIO_DIR);
++-		} else {
++-			reg = __raw_readl(CNS3XXX_GPIOB_BASE_VIRT + CNS3XXX_GPIO_DIR);
++-			reg &= ~(1 << (line - 32));
++-			__raw_writel(reg, CNS3XXX_GPIOB_BASE_VIRT + CNS3XXX_GPIO_DIR);
++-		}
++-	}
++-}
++-
++-static int cns3xxx_gpio_direction_input(struct gpio_chip *chip, unsigned gpio)
++-{
++-	gpio_line_config(gpio, CNS3XXX_GPIO_IN);
++-	return 0;
++-}
++-
++-static int cns3xxx_gpio_direction_output(struct gpio_chip *chip, unsigned gpio, int level)
++-{
++-	gpio_line_set(gpio, level);
++-	gpio_line_config(gpio, CNS3XXX_GPIO_OUT);
++-	return 0;
++-}
++-
++-static int cns3xxx_gpio_get_value(struct gpio_chip *chip, unsigned gpio)
++-{
++-	return gpio_get_value(gpio);
++-}
++-
++-static void cns3xxx_gpio_set_value(struct gpio_chip *chip, unsigned gpio, int value)
++-{
++-	gpio_set_value(gpio, value);
++-}
++-
++-static struct gpio_chip cns3xxx_gpio_chip = {
++-	.label			= "CNS3XXX_GPIO_CHIP",
++-	.direction_input	= cns3xxx_gpio_direction_input,
++-	.direction_output	= cns3xxx_gpio_direction_output,
++-	.get			= cns3xxx_gpio_get_value,
++-	.set			= cns3xxx_gpio_set_value,
++-	.base			= 0,
++-	.ngpio			= 64,
++-};
++-
++ void __init cns3xxx_common_init(void)
++ {
++ 	iotable_init(cns3xxx_io_desc, ARRAY_SIZE(cns3xxx_io_desc));
++@@ -188,7 +95,6 @@ void __init cns3xxx_common_init(void)
++ #ifdef CONFIG_LOCAL_TIMERS
++ 	twd_base = (void __iomem *) CNS3XXX_TC11MP_TWD_BASE_VIRT;
++ #endif
++-	gpiochip_add(&cns3xxx_gpio_chip);
++ }
++ 
++ /* used by entry-macro.S */
++--- /dev/null
+++++ b/arch/arm/mach-cns3xxx/gpio.c
++@@ -0,0 +1,332 @@
+++/*
+++ * Copyright 2012 Gateworks Corporation
+++ *     Chris Lang <clang@gateworks.com>
+++ *     Tim Harvey <tharvey@gateworks.com>
+++ *
+++ * This file is free software; you can redistribute it and/or modify
+++ * it under the terms of the GNU General Public License, Version 2, as
+++ * published by the Free Software Foundation.
+++ */
+++
+++#include <linux/module.h>
+++#include <linux/init.h>
+++#include <linux/interrupt.h>
+++#include <linux/io.h>
+++#include <asm/mach/map.h>
+++#include <asm/mach/irq.h>
+++#include <asm/gpio.h>
+++#include <mach/cns3xxx.h>
+++
+++#define GPIO_INTERRUPT_ENABLE                           0x20
+++#define GPIO_INTERRUPT_RAW_STATUS                       0x24
+++#define GPIO_INTERRUPT_MASKED_STATUS                    0x28
+++#define GPIO_INTERRUPT_MASK                             0x2C
+++#define GPIO_INTERRUPT_CLEAR                            0x30
+++#define GPIO_INTERRUPT_TRIGGER_METHOD                   0x34
+++#define GPIO_INTERRUPT_TRIGGER_BOTH_EDGES               0x38
+++#define GPIO_INTERRUPT_TRIGGER_TYPE                     0x3C
+++
+++#define GPIO_INTERRUPT_TRIGGER_METHOD_EDGE              0
+++#define GPIO_INTERRUPT_TRIGGER_METHOD_LEVEL             1
+++#define GPIO_INTERRUPT_TRIGGER_EDGE_SINGLE              0
+++#define GPIO_INTERRUPT_TRIGGER_EDGE_BOTH                1
+++#define GPIO_INTERRUPT_TRIGGER_TYPE_RISING              0
+++#define GPIO_INTERRUPT_TRIGGER_TYPE_FALLING             1
+++#define GPIO_INTERRUPT_TRIGGER_TYPE_HIGH                0
+++#define GPIO_INTERRUPT_TRIGGER_TYPE_LOW                 1
+++
+++static struct map_desc cns3xxx_io_desc[] __initdata = {
+++	{
+++		.virtual	= CNS3XXX_GPIOA_BASE_VIRT,
+++		.pfn		= __phys_to_pfn(CNS3XXX_GPIOA_BASE),
+++		.length		= SZ_4K,
+++		.type		= MT_DEVICE,
+++	}, {
+++		.virtual	= CNS3XXX_GPIOB_BASE_VIRT,
+++		.pfn		= __phys_to_pfn(CNS3XXX_GPIOB_BASE),
+++		.length		= SZ_4K,
+++		.type		= MT_DEVICE,
+++	},
+++};
+++
+++struct gpio_bank {
+++	void __iomem *base;
+++	u16 irq;
+++	u16 irq_base;
+++	struct gpio_chip *chip;
+++	const char* name;
+++	spinlock_t lock;
+++};
+++
+++struct gpio_bank banks[2];
+++
+++int gpio_to_irq(int gpio)
+++{
+++	if (gpio < 32)
+++		return banks[0].irq_base + gpio;
+++	if (gpio < 64)
+++		return banks[1].irq_base + gpio;
+++	return -EIO;
+++}
+++EXPORT_SYMBOL(gpio_to_irq);
+++
+++int irq_to_gpio(int irq)
+++{
+++	if (irq > banks[0].irq_base && irq < (banks[0].irq_base + 32))
+++		return irq - banks[0].irq_base;
+++	if (irq > banks[1].irq_base && irq < (banks[1].irq_base + 32))
+++		return irq - banks[1].irq_base;
+++	return -EIO;
+++}
+++EXPORT_SYMBOL(irq_to_gpio);
+++
+++static inline void gpio_line_config(u8 line, u32 direction)
+++{
+++	u32 reg;
+++	if (direction) {
+++		if (line < 32) {
+++			reg = __raw_readl(CNS3XXX_GPIOA_BASE_VIRT + CNS3XXX_GPIO_DIR);
+++			reg |= (1 << line);
+++			__raw_writel(reg, CNS3XXX_GPIOA_BASE_VIRT + CNS3XXX_GPIO_DIR);
+++		} else {
+++			reg = __raw_readl(CNS3XXX_GPIOB_BASE_VIRT + CNS3XXX_GPIO_DIR);
+++			reg |= (1 << (line - 32));
+++			__raw_writel(reg, CNS3XXX_GPIOB_BASE_VIRT + CNS3XXX_GPIO_DIR);
+++		}
+++	} else {
+++		if (line < 32) {
+++			reg = __raw_readl(CNS3XXX_GPIOA_BASE_VIRT + CNS3XXX_GPIO_DIR);
+++			reg &= ~(1 << line);
+++			__raw_writel(reg, CNS3XXX_GPIOA_BASE_VIRT + CNS3XXX_GPIO_DIR);
+++		} else {
+++			reg = __raw_readl(CNS3XXX_GPIOB_BASE_VIRT + CNS3XXX_GPIO_DIR);
+++			reg &= ~(1 << (line - 32));
+++			__raw_writel(reg, CNS3XXX_GPIOB_BASE_VIRT + CNS3XXX_GPIO_DIR);
+++		}
+++	}
+++}
+++
+++static int cns3xxx_gpio_direction_input(struct gpio_chip *chip, unsigned gpio)
+++{
+++	gpio_line_config(gpio, CNS3XXX_GPIO_IN);
+++	return 0;
+++}
+++
+++static int cns3xxx_gpio_direction_output(struct gpio_chip *chip, unsigned gpio, int level)
+++{
+++	gpio_line_set(gpio, level);
+++	gpio_line_config(gpio, CNS3XXX_GPIO_OUT);
+++	return 0;
+++}
+++
+++static int cns3xxx_gpio_get_value(struct gpio_chip *chip, unsigned gpio)
+++{
+++	return gpio_get_value(gpio);
+++}
+++
+++static void cns3xxx_gpio_set_value(struct gpio_chip *chip, unsigned gpio, int value)
+++{
+++	gpio_set_value(gpio, value);
+++}
+++
+++static struct gpio_chip cns3xxx_gpio_chip = {
+++	.label			= "CNS3XXX_GPIO_CHIP",
+++	.direction_input	= cns3xxx_gpio_direction_input,
+++	.direction_output	= cns3xxx_gpio_direction_output,
+++	.get			= cns3xxx_gpio_get_value,
+++	.set			= cns3xxx_gpio_set_value,
+++	.base			= 0,
+++	.ngpio			= 64,
+++};
+++
+++static inline void _set_gpio_irqenable(struct gpio_bank *bank, int gpio, int enable)
+++{
+++	u32 reg;
+++	
+++	reg = __raw_readl(bank->base + GPIO_INTERRUPT_ENABLE);
+++	if (enable)
+++		reg |= (1 << gpio);
+++	else
+++		reg &= ~(1 << gpio);
+++	__raw_writel(reg, bank->base + GPIO_INTERRUPT_ENABLE);
+++}
+++
+++static inline void _gpio_clear(struct gpio_bank *bank, int gpio)
+++{
+++	__raw_writel(1 << gpio, bank->base + GPIO_INTERRUPT_CLEAR);
+++}
+++
+++static inline void _set_gpio_irqmask(struct gpio_bank *bank, int gpio, int enable)
+++{
+++	u32 reg;
+++	
+++	reg = __raw_readl(bank->base + GPIO_INTERRUPT_MASK);
+++	if (enable)
+++		reg |= (1 << gpio);
+++	else
+++		reg &= ~(1 << gpio);
+++	__raw_writel(reg, bank->base + GPIO_INTERRUPT_MASK);
+++}
+++
+++/* one interrupt per GPIO controller (GPIOA/GPIOB)
+++ * this is called in task context, with IRQs enabled
+++ */
+++static void cns3xxx_gpio_irq_handler(unsigned int irq, struct irq_desc *desc)
+++{
+++	struct gpio_bank *bank = irq_get_handler_data(irq);
+++	u16 i;
+++	u32 reg;
+++
+++	desc->irq_data.chip->irq_ack(&desc->irq_data);
+++
+++	/* check GPIO controller to check which pin triggered the interrupt */
+++	reg = __raw_readl(bank->base + GPIO_INTERRUPT_RAW_STATUS);
+++	for (i = 0; i < 32; i++) {
+++		if (reg & (1 << i)) {
+++			/* clear before handling so we can't lose an edge */
+++			_gpio_clear(bank, i);
+++
+++			/* let the generic IRQ layer handle an interrupt */
+++			generic_handle_irq(bank->irq_base + i);
+++		}
+++	}
+++
+++}
+++
+++static void gpio_ack_irq(struct irq_data *d)
+++{
+++	struct gpio_bank *bank = irq_data_get_irq_chip_data(d);
+++	u32 gpio = d->irq - bank->irq_base;
+++
+++	/* clear IRQ status */
+++	_gpio_clear(bank, gpio);
+++}
+++
+++static void gpio_enable_irq(struct irq_data *d)
+++{
+++	struct gpio_bank *bank = irq_data_get_irq_chip_data(d);
+++	u32 gpio = d->irq - bank->irq_base;
+++
+++	_set_gpio_irqenable(bank, gpio, 1);
+++	_gpio_clear(bank, gpio);
+++}
+++
+++static void gpio_disable_irq(struct irq_data *d)
+++{
+++	struct gpio_bank *bank = irq_data_get_irq_chip_data(d);
+++	u32 gpio = d->irq - bank->irq_base;
+++
+++	_set_gpio_irqenable(bank, gpio, 0);
+++}
+++
+++static int gpio_set_irq_type(struct irq_data *d, u32 irqtype)
+++{
+++	struct gpio_bank *bank = irq_data_get_irq_chip_data(d);
+++	u32 gpio = d->irq - bank->irq_base;
+++	unsigned long flags;
+++	int retval;
+++	u32 method, edges, type;
+++
+++	spin_lock_irqsave(&bank->lock, flags);
+++	method = __raw_readl(bank->base + GPIO_INTERRUPT_TRIGGER_METHOD);
+++	edges  = __raw_readl(bank->base + GPIO_INTERRUPT_TRIGGER_BOTH_EDGES);
+++	type   = __raw_readl(bank->base + GPIO_INTERRUPT_TRIGGER_TYPE);
+++	
+++	switch(irqtype) {
+++	case IRQ_TYPE_EDGE_RISING:
+++		method &= ~(1 << gpio);
+++		edges &= ~(1 << gpio);
+++		type &= ~(1 << gpio);
+++		retval = 0;
+++		break;
+++	case IRQ_TYPE_EDGE_FALLING:
+++		method &= (1 << gpio);
+++		edges &= ~(1 << gpio);
+++		type |= (1 << gpio);
+++		retval = 0;
+++		break;
+++	case IRQ_TYPE_EDGE_BOTH:
+++		method &= (1 << gpio);
+++		edges |= (1 << gpio);
+++		retval = 0;
+++		break;
+++	case IRQ_TYPE_LEVEL_LOW:
+++		method |= (GPIO_INTERRUPT_TRIGGER_METHOD_LEVEL << gpio);
+++		type |= (1 << gpio);
+++		retval = 0;
+++		break;
+++	case IRQ_TYPE_LEVEL_HIGH:
+++		method |= (GPIO_INTERRUPT_TRIGGER_METHOD_LEVEL << gpio);
+++		type &= ~(1 << gpio);
+++		retval = 0;
+++		break;
+++	default:
+++		retval = -EINVAL;
+++	}
+++	__raw_writel(method, bank->base + GPIO_INTERRUPT_TRIGGER_METHOD);
+++	__raw_writel(edges, bank->base + GPIO_INTERRUPT_TRIGGER_BOTH_EDGES);
+++	__raw_writel(type, bank->base + GPIO_INTERRUPT_TRIGGER_TYPE);
+++	spin_unlock_irqrestore(&bank->lock, flags);
+++
+++	if (type & (IRQ_TYPE_LEVEL_LOW | IRQ_TYPE_LEVEL_HIGH))
+++		__irq_set_handler_locked(d->irq, handle_level_irq);
+++	else if (type & (IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_EDGE_RISING))
+++		__irq_set_handler_locked(d->irq, handle_edge_irq);
+++
+++	return retval;
+++}
+++
+++static struct irq_chip gpio_irq_chip = {
+++	.name = "GPIO",
+++	.irq_ack = gpio_ack_irq,
+++	.irq_enable = gpio_enable_irq,
+++	.irq_disable = gpio_disable_irq,
+++	.irq_set_type = gpio_set_irq_type,
+++};
+++
+++/*
+++ * This lock class tells lockdep that GPIO irqs are in a different
+++ * category than their parents, so it won't report false recursion.
+++ */
+++static struct lock_class_key gpio_lock_class;
+++
+++static void cns3xxx_gpio_bank_init(struct gpio_bank *bank, int nrgpio)
+++{
+++	int i;
+++
+++	spin_lock_init(&bank->lock);
+++
+++	/* set the irq chip for an irq */
+++	for (i = 0; i < nrgpio; i++) {
+++		irq_set_lockdep_class(bank->irq_base + i, &gpio_lock_class);
+++		irq_set_chip_and_handler_name(bank->irq_base + i, &gpio_irq_chip,
+++			handle_edge_irq, bank->name);
+++		irq_set_chip_data(bank->irq_base + i, bank);
+++		set_irq_flags(bank->irq_base + i, IRQF_VALID);
+++	}
+++}
+++
+++void __init cns3xxx_gpio_init(void)
+++{
+++	iotable_init(cns3xxx_io_desc, ARRAY_SIZE(cns3xxx_io_desc));
+++
+++	BUG_ON( gpiochip_add(&cns3xxx_gpio_chip) < 0);
+++
+++ 	banks[0].base = (void __iomem *)(CNS3XXX_GPIOA_BASE_VIRT);
+++	banks[0].chip = &cns3xxx_gpio_chip;
+++	banks[0].irq_base = NR_IRQS_CNS3XXX + 0;
+++	banks[0].name = "A";
+++	cns3xxx_gpio_bank_init(&banks[0], 32);
+++
+++ 	banks[1].base = (void __iomem *)(CNS3XXX_GPIOB_BASE_VIRT);
+++	banks[1].chip = &cns3xxx_gpio_chip;
+++	banks[1].irq_base = NR_IRQS_CNS3XXX + 32;
+++	banks[1].name = "B";
+++	cns3xxx_gpio_bank_init(&banks[1], 32);
+++
+++	/* setup the cascade irq handlers for GPIOA and GPIOB banks */
+++	irq_set_chained_handler(IRQ_CNS3XXX_GPIOA, cns3xxx_gpio_irq_handler);
+++	irq_set_handler_data(IRQ_CNS3XXX_GPIOA, &banks[0]); 
+++	irq_set_chained_handler(IRQ_CNS3XXX_GPIOB, cns3xxx_gpio_irq_handler);
+++	irq_set_handler_data(IRQ_CNS3XXX_GPIOB, &banks[1]); 
+++}
++--- a/arch/arm/mach-cns3xxx/include/mach/gpio.h
+++++ b/arch/arm/mach-cns3xxx/include/mach/gpio.h
++@@ -3,7 +3,7 @@
++  *
++  * CNS3xxx GPIO wrappers for arch-neutral GPIO calls
++  *
++- * Copyright 2011 Gateworks Corporation
+++ * Copyright 2012 Gateworks Corporation
++  *		  Chris Lang <clang@gateworks.com>
++  *
++  * Based on IXP implementation by Milan Svoboda <msvoboda@ra.rockwell.com>
++@@ -92,6 +92,7 @@ static inline void gpio_set_value(unsign
++ 
++ #define gpio_cansleep __gpio_cansleep
++ 
+++void __init cns3xxx_gpio_init(void);
++ extern int gpio_to_irq(int gpio);
++ extern int irq_to_gpio(int gpio);
++ 
++--- a/arch/arm/mach-cns3xxx/laguna.c
+++++ b/arch/arm/mach-cns3xxx/laguna.c
++@@ -745,6 +745,7 @@ static int __init laguna_model_setup(voi
++ 	u32 reg;
++ 
++ 	printk("Running on Gateworks Laguna %s\n", laguna_info.model);
+++	cns3xxx_gpio_init();
++ 
++ 	if (strncmp(laguna_info.model, "GW", 2) == 0) {
++ 		if (laguna_info.config_bitmap & ETH0_LOAD)
++--- a/arch/arm/mach-cns3xxx/include/mach/cns3xxx.h
+++++ b/arch/arm/mach-cns3xxx/include/mach/cns3xxx.h
++@@ -627,7 +627,7 @@ int cns3xxx_cpu_clock(void);
++ 
++ #if !defined(NR_IRQS) || (NR_IRQS < NR_IRQS_CNS3XXX)
++ #undef NR_IRQS
++-#define NR_IRQS				NR_IRQS_CNS3XXX
+++#define NR_IRQS				(NR_IRQS_CNS3XXX + 64)
++ #endif
++ 
++ #endif	/* __MACH_BOARD_CNS3XXX_H */
++--- a/arch/arm/mach-cns3xxx/Makefile
+++++ b/arch/arm/mach-cns3xxx/Makefile
++@@ -1,4 +1,4 @@
++-obj-$(CONFIG_ARCH_CNS3XXX)		+= core.o pm.o devices.o
+++obj-$(CONFIG_ARCH_CNS3XXX)		+= core.o pm.o gpio.o devices.o
++ obj-$(CONFIG_PCI)			+= pcie.o
++ obj-$(CONFIG_MACH_CNS3420VB)		+= cns3420vb.o
++ obj-$(CONFIG_MACH_GW2388)		+= laguna.o

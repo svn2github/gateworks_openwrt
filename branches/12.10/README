@@ -1,0 +1,157 @@
+Instructions for building the OpenWRT based BSP with Gateworks Patches
+
+---------------
+Pre-requisites:
+---------------
+  - OpenWRT buildroot prerequisites listed at
+    http://wiki.openwrt.org/doc/howto/buildroot.exigence
+  - Rincon product family:
+    - make sure there are no '.' (dot) characters in your path
+      (this causes build failures with the TI packages)
+    - TI Code Generation Tools for TI Processors - This requires a (free) TI
+      login and password and can be downloaded download from:
+      https://www-a.ti.com/downloads/sds_support/TICodegenerationTools/
+      - Login to your Free 'my TI' account
+      - click 'Download' link
+      - select 'Linux' link under
+        'C6000 Code Generation Tools v7.3.1' (not most recent)
+      - read and fill out the U.S. Government export approval form.  If you
+        meet the approval you will automatically be provided with a download
+        link
+
+----------------
+Simple Procedure
+----------------
+
+A makefile is provided in this directory to simplify the process of fetching,
+patching, and preparing the OpenWRT tree to be built for the Gateworks
+products.  The following make targets exist:
+
+trunk    : fetch, patch, and prepare the version of the OpenWRT trunk this
+           patchset has been tested with
+all      : build BSP for all supported Gateworks product families
+cns3xxx  : build BSP for the cns3xxx target (Laguna product family)
+davinci  : build BSP for the cns3xxx target (Rincon product family)
+ixp4xx   : build BSP for the cns3xxx target (Avila/Cambria product family)
+images   : build binary flash images (suitable for JTAG flashing) for
+           supported product families (Laguna/Rincon).
+dirclean : remove all downloaded and built directories
+
+For example, if you wish to build the BSP for a GW2380 (in the Laguna family):
+  make cns3xxx  ;# build kernel/rootfs
+  make images   ;# fetch latest bootloader and create a flash image for JTAG
+
+The resulting kernel/rootfs will be in the trunk/bin/cns3xxx directory and
+the resulting flash firmware image will be images/gw2380.bin.
+
+For more information see:
+  - http://trac.gateworks.com/wiki/build_openwrt
+  - http://trac.gateworks.com/ and follow on to the product page for your board
+    for more info on updating firmware.
+
+----------------
+Manual Procedure
+----------------
+
+If you prefer to do things manually, these are the steps that are implemented
+by the makefile in this directory.
+
+1. Download OpenWrt to development directory (Note that we specify a specific
+   revision that our patches apply to and have been tested against):
+
+  # cd /usr/src/openwrt
+  # svn co -r"{2012-04-05}" svn://svn.openwrt.org/openwrt/trunk trunk
+
+  Note:  Be sure that there are no '.' characters in the path to your OpenWRT
+         working directory - this causes issues for certain packages
+         (specifically TI packages needed for the Rincon product family)
+
+2. Download Gateworks Generic OpenWrt Patches (in the same directory as above)
+
+  # svn co http://svn.gateworks.com/generic/branches/11.08-1 patches
+
+3. Apply Gateworks Generic Patches to OpenWrt Tree
+
+  # ./trunk/scripts/patch-kernel.sh ./trunk ./patches/patches
+
+4. Change to the OpenWRT directory and update the OpenWRT package feeds:
+
+  # cd trunk
+  # ./scripts/feeds update
+  # svn update -r"{2012-04-05}" feeds/{packages,xwrt,luci} # pin external feeds
+
+  This step will download package source feeds from various Internet locations
+  and can take some time depending on your internet connection. You can speed
+  up the process by commenting out feeds in feeds.conf.default that you don't
+  want or are not applicable to your target. For example if you are not
+  using the 'xwrt' web-admin you can comment out that feed by adding a '#'
+  character to the beginning of the line.
+
+  If any required feed fails to update make sure you repeat the step or you may
+  end up with un-buildable dependencies.
+
+  Note that the last command 'pins' the external feeds to the same date we
+  pin the openwrt trunk to in order to garuntee a repeatible build.  In some
+  cases trunk can make changes that break compatibility with feeds.
+
+5. Copy Gateworks Default Configuration for your platform to OpenWrt root - 
+   each product family has a different configuration named by the OpenWRT
+   'target' supporting that CPU family:
+
+  Avila/Cambria - ixp4xx
+  Laguna - cns3xxx
+  Rincon - davinci
+
+  For example for the Rincon product family:
+    # cp ../config/davinci/.config . ;# configure for Gateworks Rincon family
+
+6. Create package symlinks:
+
+  # make package/symlinks-install
+
+  Note: This is 'not' the same as package/symlinks as that will update package
+        feeds before installing which reverts the pinnings in step #4
+
+7. Customize Packages (optional):
+
+  It is "strongly" suggested that no changes are made the first time you build
+  this directory in order to have the same results as Gateworks. When finished
+  editing exit and SAVE
+
+  # make menuconfig
+
+8. Make
+
+  # make V=99
+
+  Notes:
+  - if you build multiple OpenWRT trees you may want to create a symlink from
+    a shared location to 'dl' before building if you want to save on space or
+    download time (ie 'ln -s /usr/src/dl dl').
+  - you can speed up the build process on multi-core host systems by passing
+    make the '-j' option with the number of processes to use.  The general
+    rule of thumb is to provide it with the number of cores you have (you can
+    see this via 'grep processor /proc/cpuinfo').
+  - It is a good idea to keep a build log in case you run into difficulty and
+    need to seek guidance from a maillist, you can use '2>&1 | tee build.log'
+    to direct stdout/stderr to build.log as well as the console.
+
+  Example (Quad Core):
+  # make -j4 V=99 2>&1 | tee build.log
+
+9. Now go get coffee while the kernel and filesystem is downloaded and built
+
+  The resulting binary images will be in bin/<target> platform however the
+  files and procedure to flash them onto a board differs from board to board
+  because of bootloader, flash and memory mapping differences.
+
+  If you wish to build for a different target (ie cns3xxx for Laguna) you can
+  do the following:
+  # cp ../config/cns3xxx/.config . ;# configure for Gateworks Laguna family
+  # make -j4 V=99 2>&1 | tee build.log ;# build
+
+  If for some reason you wish to clean everything and re-build:
+  # make dirclean
+  (Note that 'distclean' will remove downloaded package feeds taking you back
+   to step #4)
+

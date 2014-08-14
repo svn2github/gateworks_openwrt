@@ -1,0 +1,370 @@
+Index: trunk/package/boot/uboot-envtools/files/cns3xxx
+===================================================================
+--- trunk/package/boot/uboot-envtools/files/cns3xxx	(revision 0)
++++ trunk/package/boot/uboot-envtools/files/cns3xxx	(working copy)
+@@ -0,0 +1,28 @@
++#!/bin/sh
++#
++# Copyright (C) 2012 OpenWrt.org
++#
++
++[ -e /etc/config/ubootenv ] && exit 0
++
++touch /etc/config/ubootenv
++
++. /lib/cns3xxx.sh
++. /lib/uboot-envtools.sh
++. /lib/functions.sh
++
++board=$(cns3xxx_board_name)
++
++case "$board" in
++laguna)
++	# Laguna uboot env size/erasesize vary depending on NOR vs SPI FLASH
++	size=$(grep mtd1 /proc/mtd | awk '{print $2}')
++	erasesize=$(grep mtd1 /proc/mtd | awk '{print $3}')
++	ubootenv_add_uci_config "/dev/mtd1" "0x0" "0x$size" "0x$erasesize"
++	;;
++esac
++
++config_load ubootenv
++config_foreach ubootenv_add_app_config ubootenv
++
++exit 0
+Index: trunk/package/boot/uboot-envtools/Makefile
+===================================================================
+--- trunk/package/boot/uboot-envtools/Makefile	(revision 36311)
++++ trunk/package/boot/uboot-envtools/Makefile	(working copy)
+@@ -69,6 +69,10 @@
+ 	$(INSTALL_DIR) $(1)/etc/uci-defaults
+ 	$(INSTALL_BIN) ./files/ramips $(1)/etc/uci-defaults/uboot-envtools
+ endif
++ifneq ($(CONFIG_TARGET_cns3xxx),)
++	$(INSTALL_DIR) $(1)/etc/uci-defaults
++	$(INSTALL_BIN) ./files/cns3xxx $(1)/etc/uci-defaults/uboot-envtools
++endif
+ endef
+ 
+ $(eval $(call BuildPackage,uboot-envtools))
+Index: trunk/package/mac80211/patches/556-ath9k_avoid_stuck_flush.patch
+===================================================================
+--- trunk/package/mac80211/patches/556-ath9k_avoid_stuck_flush.patch	(revision 0)
++++ trunk/package/mac80211/patches/556-ath9k_avoid_stuck_flush.patch	(working copy)
+@@ -0,0 +1,23 @@
++If a flush is requested, make sure to clear descriptor once we've processed it.
++
++This resolves a hang that will occur if all RX descriptors are full when a
++flush is requested.
++--- a/drivers/net/wireless/ath/ath9k/recv.c
+++++ b/drivers/net/wireless/ath/ath9k/recv.c
++@@ -1376,14 +1376,13 @@ requeue_drop_frag:
++ 		}
++ requeue:
++ 		list_add_tail(&bf->list, &sc->rx.rxbuf);
++-		if (flush)
++-			continue;
++ 
++ 		if (edma) {
++ 			ath_rx_edma_buf_link(sc, qtype);
++ 		} else {
++ 			ath_rx_buf_link(sc, bf);
++-			ath9k_hw_rxena(ah);
+++			if (!flush)
+++				ath9k_hw_rxena(ah);
++ 		}
++ 	} while (1);
++ 
+Index: trunk/package/mac80211/patches/557-ath9k_recv_budget.patch
+===================================================================
+--- trunk/package/mac80211/patches/557-ath9k_recv_budget.patch	(revision 0)
++++ trunk/package/mac80211/patches/557-ath9k_recv_budget.patch	(working copy)
+@@ -0,0 +1,28 @@
++Implement a recv budget so that in cases of high traffic we still allow other
++taskets to get processed.
++
++Without this, we can encounter a host of issues during high wireless traffic
++reception depending on system load including rcu stall's detected, failure to
++service critical tasks such as watchdog resets, and triggering of the tx
++stuck tasklet.
++
++--- a/drivers/net/wireless/ath/ath9k/recv.c
+++++ b/drivers/net/wireless/ath/ath9k/recv.c
++@@ -1177,6 +1177,7 @@ int ath_rx_tasklet(struct ath_softc *sc,
++ 	u64 tsf = 0;
++ 	u32 tsf_lower = 0;
++ 	unsigned long flags;
+++	unsigned int budget = 512;
++ 
++ 	if (edma)
++ 		dma_type = DMA_BIDIRECTIONAL;
++@@ -1384,6 +1385,9 @@ requeue:
++ 			if (!flush)
++ 				ath9k_hw_rxena(ah);
++ 		}
+++
+++		if (!budget--)
+++			break;
++ 	} while (1);
++ 
++ 	if (!(ah->imask & ATH9K_INT_RXEOL)) {
+Index: trunk/package/mac80211/patches/999-ath9k_reset_fix.patch
+===================================================================
+--- trunk/package/mac80211/patches/999-ath9k_reset_fix.patch	(revision 0)
++++ trunk/package/mac80211/patches/999-ath9k_reset_fix.patch	(working copy)
+@@ -0,0 +1,256 @@
++In general the 'Failed to stop TX DMA' this error displays itself when a large
++amount of data is able to be transmitted across a high speed wireless link,
++so if the speeds aren't up in the 60+ Mbps range, then the frequency of the
++error diminishes.  Additionally this error happens only when aggregation is
++enabled and used (which by default just about every 802.11n card will have
++enabled), aggregation is when multiple data frames are aggregated into one
++larger packet. Wireless cards can handle a much larger payload then standard
++ethernet, so they aggregate the frames to reduce the overhead in
++sending/receiving smaller packets.
++
++The root cause of this error is a "Fatal Error" interrupt being received by
++the host from the wireless hardware. When this "Fatal error" happens, the
++driver attempts to clean up and issue a hardware level reset to the card.
++These resets are common to atheros hardware as just simply changing the
++channel requires the driver to reset the card. When resetting the card due to
++a channel change, the driver tries to ensure that any pending aggregated
++packets are sent and flushed from the queue and that any received packets are
++received and flushed from the queue as well.
++
++A "Fatal Error" interrupt is generated by the hardware typically due to a
++"PCI Bus Error", with the most typical being that the PCI device received a
++"Target Abort".
++
++When this error does happen, we need to reset the card immediately due to the
++fact that we don't really know what transaction was unsuccessful. In doing so
++we don't really care about what is in the queues because we are just going to
++reset the device. The driver as written uses the same reset functions for
++changing channels as it does for this error, which means that it tries to flush
++all of the queues, the issue is that this interrupt can and does happen while
++we are in the middle of creating a aggregated packet, thus there are
++descriptors that have been sent to the hardware that show the start and middle
++packets of an aggregated frame, but no ending packet of the frame. Thus, when
++the driver attempt to flush the queues, the hardware does not know what to do
++with the frame as there is no ending packet, and it just becomes stuck in the
++queue resulting the a "Unable to stop TX DMA". If aggregated frames are not
++used, then this "PCI Bus Error" could still happen, but the queues would flush
++successfully resulting in no error being printed and the hardware/software
++would still work. If there are not any aggregated frame descriptors in the
++hardware queues when this error comes across the bus, then the driver will
++handle it gracefully and the user will never be aware that it happened.
++
++This patch uses the ath9k_stop/start functions instead of the internal_reset
++functions to stop, reset and start the hardware in a way that doesn't care if
++it is unable to "flush" the queues completely. Then it restarts the queues so
++that there isn't a large amount of lag time.
++
++--- a/drivers/net/wireless/ath/ath9k/main.c
+++++ b/drivers/net/wireless/ath/ath9k/main.c
++@@ -166,7 +166,10 @@ static void __ath_cancel_work(struct ath
++ static void ath_cancel_work(struct ath_softc *sc)
++ {
++ 	__ath_cancel_work(sc);
++-	cancel_work_sync(&sc->hw_reset_work);
+++
+++	if (!(test_bit(SC_OP_HW_RESET, &sc->sc_flags))) {
+++		cancel_work_sync(&sc->hw_reset_work);
+++	}
++ }
++ 
++ static void ath_restart_work(struct ath_softc *sc)
++@@ -401,9 +404,9 @@ void ath9k_tasklet(unsigned long data)
++ 
++ 	ath9k_btcoex_handle_interrupt(sc, status);
++ 
++-out:
++ 	/* re-enable hardware interrupt */
++ 	ath9k_hw_enable_interrupts(ah);
+++out:
++ 
++ 	spin_unlock(&sc->sc_pcu_lock);
++ 	ath9k_ps_restore(sc);
++@@ -574,13 +577,6 @@ void ath9k_queue_reset(struct ath_softc
++ 	ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
++ }
++ 
++-void ath_reset_work(struct work_struct *work)
++-{
++-	struct ath_softc *sc = container_of(work, struct ath_softc, hw_reset_work);
++-
++-	ath_reset(sc);
++-}
++-
++ /**********************/
++ /* mac80211 callbacks */
++ /**********************/
++@@ -647,8 +643,13 @@ static int ath9k_start(struct ieee80211_
++ 	clear_bit(SC_OP_INVALID, &sc->sc_flags);
++ 	sc->sc_ah->is_monitoring = false;
++ 
++-	if (!ath_complete_reset(sc, false))
++-		ah->reset_power_on = false;
+++	if (test_bit(SC_OP_HW_RESET, &sc->sc_flags)) {
+++		if (!ath_complete_reset(sc, true))
+++			ah->reset_power_on = false;
+++	} else {
+++		if (!ath_complete_reset(sc, false))
+++			ah->reset_power_on = false;
+++	}
++ 
++ 	if (ah->led_pin >= 0) {
++ 		ath9k_hw_cfg_output(ah, ah->led_pin,
++@@ -823,6 +824,83 @@ static void ath9k_stop(struct ieee80211_
++ 	ath_dbg(common, CONFIG, "Driver halt\n");
++ }
++ 
+++
+++static void ath9k_restore_keys(struct ieee80211_hw *hw,
+++				struct ieee80211_vif *vif,
+++				struct ieee80211_sta *sta,
+++				struct ieee80211_key_conf *key,
+++				void *data)
+++{
+++  struct ath_softc *sc = data;
+++	struct ath_hw *ah = sc->sc_ah;
+++	struct ath_common *common = ath9k_hw_common(ah);
+++	int ret = 0;
+++
+++	ret = ath_key_config(common, vif, sta, key);
+++	if (ret >= 0) {
+++		key->hw_key_idx = ret;
+++		/* push IV and Michael MIC generation to stack */
+++		key->flags |= IEEE80211_KEY_FLAG_GENERATE_IV;
+++		if (key->cipher == WLAN_CIPHER_SUITE_TKIP)
+++			key->flags |= IEEE80211_KEY_FLAG_GENERATE_MMIC;
+++		if (sc->sc_ah->sw_mgmt_crypto &&
+++		    key->cipher == WLAN_CIPHER_SUITE_CCMP)
+++			key->flags |= IEEE80211_KEY_FLAG_SW_MGMT_TX;
+++		ret = 0;
+++	}
+++
+++ 	if (sta && sta->drv_priv) {
+++		struct ath_node *an = (struct ath_node *) sta->drv_priv;
+++		if (an)
+++			an->ps_key = ret;
+++	}
+++}
+++
+++static void ath9k_reset_vif_iter(void *data, u8 *mac, struct ieee80211_vif *vif)
+++{
+++	struct ath_softc *sc = data;
+++
+++	ieee80211_iter_keys(sc->hw, vif, ath9k_restore_keys, sc);
+++}
+++
+++void ath_reset_work(struct work_struct *work)
+++{
+++	struct ath_softc *sc = container_of(work, struct ath_softc, hw_reset_work);
+++	struct ath_hw *ah = sc->sc_ah;
+++	struct ath_common *common = ath9k_hw_common(ah);
+++	int i;
+++
+++	// Fully Stop Driver
+++	ah->ah_flags |= AH_HARD_RESET;
+++	ath9k_stop(sc->hw);
+++	ah->ah_flags &= ~AH_HARD_RESET;
+++
+++	// clear keymap
+++	for (i = 0; i < common->keymax; i++) {
+++		clear_bit(i, common->keymap);
+++		clear_bit(i, common->ccmp_keymap);
+++	}
+++
+++	// Fully Start Driver
+++	ath9k_start(sc->hw);
+++
+++	// Now restart the queues
+++	for (i = 0; i < ATH9K_NUM_TX_QUEUES; i++) {
+++		if (!ATH_TXQ_SETUP(sc, i))
+++			continue;
+++
+++		spin_lock_bh(&sc->tx.txq[i].axq_lock);
+++		ath_txq_schedule(sc, &sc->tx.txq[i]);
+++		spin_unlock_bh(&sc->tx.txq[i].axq_lock);
+++	}
+++
+++	// restore keys
+++	rtnl_lock();
+++	ieee80211_iterate_active_interfaces(sc->hw, IEEE80211_IFACE_ITER_RESUME_ALL,
+++		ath9k_reset_vif_iter, sc);
+++	rtnl_unlock();
+++}
+++
++ bool ath9k_uses_beacons(int type)
++ {
++ 	switch (type) {
++--- a/drivers/net/wireless/ath/ath9k/hw.h
+++++ b/drivers/net/wireless/ath/ath9k/hw.h
++@@ -747,6 +747,7 @@ enum ath_cal_list {
++ #define AH_UNPLUGGED    0x2 /* The card has been physically removed. */
++ #define AH_FASTCC       0x4
++ #define AH_NO_EEP_SWAP  0x8 /* Do not swap EEPROM data */
+++#define AH_HARD_RESET   0x10 /* hard reset in progress - do not wait for queues */
++ 
++ struct ath_hw {
++ 	struct ath_ops reg_ops;
++--- a/drivers/net/wireless/ath/ath9k/mac.c
+++++ b/drivers/net/wireless/ath/ath9k/mac.c
++@@ -149,13 +149,15 @@ void ath9k_hw_abort_tx_dma(struct ath_hw
++ 	REG_SET_BIT(ah, AR_DIAG_SW, AR_DIAG_FORCE_CH_IDLE_HIGH);
++ 	REG_SET_BIT(ah, AR_D_GBL_IFS_MISC, AR_D_GBL_IFS_MISC_IGNORE_BACKOFF);
++ 
++-	for (q = 0; q < AR_NUM_QCU; q++) {
++-		for (i = 0; i < maxdelay; i++) {
++-			if (i)
++-				udelay(5);
+++	if (!(ah->ah_flags & AH_HARD_RESET)) {
+++		for (q = 0; q < AR_NUM_QCU; q++) {
+++			for (i = 0; i < maxdelay; i++) {
+++				if (i)
+++					udelay(5);
++ 
++-			if (!ath9k_hw_numtxpending(ah, q))
++-				break;
+++				if (!ath9k_hw_numtxpending(ah, q))
+++					break;
+++			}
++ 		}
++ 	}
++ 
++--- a/drivers/net/wireless/ath/ath9k/recv.c
+++++ b/drivers/net/wireless/ath/ath9k/recv.c
++@@ -470,7 +470,11 @@ bool ath_stoprecv(struct ath_softc *sc)
++ 
++ 	ath9k_hw_abortpcurecv(ah);
++ 	ath9k_hw_setrxfilter(ah, 0);
++-	stopped = ath9k_hw_stopdmarecv(ah, &reset);
+++
+++	if (!(ah->ah_flags & AH_HARD_RESET))
+++		stopped = ath9k_hw_stopdmarecv(ah, &reset);
+++	else
+++		stopped = true;
++ 
++ 	ath_flushrecv(sc);
++ 
++--- a/drivers/net/wireless/ath/ath9k/xmit.c
+++++ b/drivers/net/wireless/ath/ath9k/xmit.c
++@@ -1559,7 +1559,7 @@ bool ath_drain_all_txq(struct ath_softc
++ 			npend |= BIT(i);
++ 	}
++ 
++-	if (npend)
+++	if (npend && !test_bit(SC_OP_HW_RESET, &sc->sc_flags))
++ 		ath_err(common, "Failed to stop TX DMA, queues=0x%03x!\n", npend);
++ 
++ 	for (i = 0; i < ATH9K_NUM_TX_QUEUES; i++) {
++--- a/config.mk
+++++ b/config.mk
++@@ -267,7 +267,7 @@ export CONFIG_ATH5K=m
++ export CONFIG_ATH9K=m
++ export CONFIG_ATH9K_HW=m
++ export CONFIG_ATH9K_COMMON=m
++-# export CONFIG_ATH9K_DEBUGFS=y
+++export CONFIG_ATH9K_DEBUGFS=y
++ # export CONFIG_ATH9K_AHB=y
++ 
++ # Disable this to get minstrel as default, we leave the ath9k

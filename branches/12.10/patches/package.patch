@@ -1,0 +1,289 @@
+Index: trunk/package/ixp4xx-microcode/Makefile
+===================================================================
+--- trunk/package/ixp4xx-microcode/Makefile	(revision 27590)
++++ trunk/package/ixp4xx-microcode/Makefile	(working copy)
+@@ -48,6 +48,7 @@
+ 	$(INSTALL_DIR) $(1)/lib/firmware
+ 	$(INSTALL_DIR) $(1)/usr/share/doc
+ 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/NPE-A $(1)/lib/firmware/
++	$(INSTALL_BIN) $(PKG_BUILD_DIR)/NPE-A-HSS $(1)/lib/firmware/
+ 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/NPE-B $(1)/lib/firmware/
+ 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/NPE-C $(1)/lib/firmware/
+ 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/LICENSE.IPL $(1)/usr/share/doc/
+Index: trunk/package/ixp4xx-microcode/src/IxNpeMicrocode.h
+===================================================================
+--- trunk/package/ixp4xx-microcode/src/IxNpeMicrocode.h	(revision 27590)
++++ trunk/package/ixp4xx-microcode/src/IxNpeMicrocode.h	(working copy)
+@@ -27,7 +27,7 @@
+ #define IX_NPEDL_NPEIMAGE_NPEA_ETH_SPAN_FIREWALL_VLAN_QOS_HDR_CONV
+ // #define IX_NPEDL_NPEIMAGE_NPEA_ETH_LEARN_FILTER_SPAN_FIREWALL_VLAN_QOS
+ // #define IX_NPEDL_NPEIMAGE_NPEA_ETH_LEARN_FILTER_SPAN_FIREWALL
+-// #define IX_NPEDL_NPEIMAGE_NPEA_HSS_2_PORT
++#define IX_NPEDL_NPEIMAGE_NPEA_HSS_2_PORT
+ // #define IX_NPEDL_NPEIMAGE_NPEA_DMA
+ // #define IX_NPEDL_NPEIMAGE_NPEA_ATM_MPHY_12_PORT
+ // #define IX_NPEDL_NPEIMAGE_NPEA_HSS0_ATM_MPHY_1_PORT
+@@ -118,7 +118,11 @@
+ 
+ 		sprintf(filename, "NPE-%c.%08x", (field[0] & 0xf) + 'A',
+ 			image->id);
+-		sprintf(slnk, "NPE-%c", (field[0] & 0xf) + 'A');
++		if (image->id == 0x00090000)
++			sprintf(slnk, "NPE-%c-HSS", (field[0] & 0xf) + 'A');
++		else
++			sprintf(slnk, "NPE-%c", (field[0] & 0xf) + 'A');
++
+ 		printf("Writing image: %s.NPE_%c Func: %2x Rev: %02x.%02x "
+ 			"Size: %5d to: '%s'\n",
+ 			names[field[0] >> 4], (field[0] & 0xf) + 'A',
+Index: trunk/package/kernel/modules/001-depends.mk
+===================================================================
+--- trunk/package/kernel/modules/001-depends.mk	(revision 27590)
++++ trunk/package/kernel/modules/001-depends.mk	(working copy)
+@@ -36,9 +36,9 @@
+ 
+ 
+ define SetDepends/rfkill
+-  DEPENDS:= @(TARGET_ar71xx||TARGET_brcm47xx||TARGET_s3c24xx||TARGET_x86||TARGET_gemini)
++  DEPENDS:= @(TARGET_ar71xx||TARGET_brcm47xx||TARGET_s3c24xx||TARGET_x86||TARGET_gemini||TARGET_ixp4xx||TARGET_cns3xxx)
+ endef
+ 
+ define AddDepends/rfkill
+-  DEPENDS+= +(TARGET_ar71xx||TARGET_brcm47xx||TARGET_s3c24xx||TARGET_x86):kmod-rfkill $(1)
++  DEPENDS+= +(TARGET_ar71xx||TARGET_brcm47xx||TARGET_s3c24xx||TARGET_x86||TARGET_ixp4xx||TARGET_cns3xxx):kmod-rfkill $(1)
+ endef
+Index: trunk/package/kernel/modules/sound.mk
+===================================================================
+--- trunk/package/kernel/modules/sound.mk	(revision 27590)
++++ trunk/package/kernel/modules/sound.mk	(working copy)
+@@ -194,3 +194,40 @@
+ endef
+ 
+ $(eval $(call KernelPackage,sound-soc-n810))
++
++
++define KernelPackage/sound-soc-gw_avila
++  TITLE:=Gateworks Avila SoC sound support
++  KCONFIG:= \
++	CONFIG_SND_GW_AVILA_SOC \
++	CONFIG_SND_GW_AVILA_SOC_PCM \
++	CONFIG_SND_GW_AVILA_SOC_HSS
++  FILES:= \
++	$(LINUX_DIR)/sound/soc/codecs/snd-soc-tlv320aic3x.ko \
++	$(LINUX_DIR)/sound/soc/gw-avila/snd-soc-gw-avila.ko \
++	$(LINUX_DIR)/sound/soc/gw-avila/snd-soc-gw-avila-pcm.ko \
++	$(LINUX_DIR)/sound/soc/gw-avila/snd-soc-gw-avila-hss.ko
++  AUTOLOAD:=$(call AutoLoad,65,snd-soc-tlv320aic3x snd-soc-gw-avila snd-soc-gw-avila-pcm snd-soc-gw-avila-hss)
++  DEPENDS:=@TARGET_ixp4xx +kmod-sound-soc-core
++  $(call AddDepends/sound)
++endef
++
++$(eval $(call KernelPackage,sound-soc-gw_avila))
++
++
++define KernelPackage/sound-soc-davinci
++  TITLE:=TI Davinci SoC sound support
++  KCONFIG:= \
++	CONFIG_SND_DAVINCI_SOC \
++	CONFIG_SND_DAVINCI_SOC_EVM
++  FILES:= \
++	$(LINUX_DIR)/sound/soc/codecs/snd-soc-tlv320aic3x.ko \
++	$(LINUX_DIR)/sound/soc/davinci/snd-soc-davinci-i2s.ko \
++	$(LINUX_DIR)/sound/soc/davinci/snd-soc-evm.ko \
++	$(LINUX_DIR)/sound/soc/davinci/snd-soc-davinci.ko
++  AUTOLOAD:=$(call AutoLoad,65,snd-soc-tlv320aic3x snd-soc-davinci snd-soc-davinci-i2s snd-soc-evm)
++  DEPENDS:=@TARGET_davinci +kmod-sound-soc-core
++  $(call AddDepends/sound)
++endef
++
++$(eval $(call KernelPackage,sound-soc-davinci))
+Index: trunk/package/kernel/modules/usb.mk
+===================================================================
+--- trunk/package/kernel/modules/usb.mk	(revision 27590)
++++ trunk/package/kernel/modules/usb.mk	(working copy)
+@@ -32,12 +32,15 @@
+   DEPENDS+=+!TARGET_etrax:kmod-usb-core $(1)
+ endef
+ 
++#
++# USB Peripheral Support
++#
+ 
+ define KernelPackage/usb-gadget
+   TITLE:=USB Gadget support
+   KCONFIG:=CONFIG_USB_GADGET
+-  FILES:=
+-  AUTOLOAD:=
++  FILES:=$(LINUX_DIR)/drivers/usb/gadget/udc-core.ko
++  AUTOLOAD:=$(call AutoLoad,51,udc-core)
+   DEPENDS:=@USB_GADGET_SUPPORT
+   $(call AddDepends/usb)
+ endef
+@@ -48,26 +51,103 @@
+ 
+ $(eval $(call KernelPackage,usb-gadget))
+ 
++define AddDepends/usb-gadget
++  SUBMENU:=$(USB_MENU)
++  DEPENDS+=kmod-usb-gadget $(1)
++endef
+ 
+-define KernelPackage/usb-eth-gadget
++#
++# USB Device Controllers
++#
++
++define KernelPackage/usb-gadget-usb3380
++  TITLE:=USB3380 Device Controller support
++  KCONFIG:=CONFIG_USB_USB3380
++  FILES:=$(LINUX_DIR)/drivers/usb/gadget/usb3380.ko
++  AUTOLOAD:=$(call AutoLoad,51,usb3380)
++  $(call AddDepends/usb-gadget)
++endef
++
++define KernelPackage/usb-gadget-usb3380/description
++  Kernel support for USB3280/USB3380 USB Device Controller.
++endef
++
++$(eval $(call KernelPackage,usb-gadget-usb3380))
++
++
++#
++# Gadget Drivers
++#
++
++define KernelPackage/usb-gadget-zero
++  TITLE:=USB Test Gadget support
++  KCONFIG:= CONFIG_USB_ZERO
++  FILES:=$(LINUX_DIR)/drivers/usb/gadget/g_zero.ko
++  AUTOLOAD:=$(call AutoLoad,52,g_zero)
++  $(call AddDepends/usb-gadget)
++endef
++
++define KernelPackage/usb-gadget-zero/description
++  Kernel support for USB Zero Gadget.
++endef
++
++$(eval $(call KernelPackage,usb-gadget-zero))
++
++define KernelPackage/usb-gadget-eth
+   TITLE:=USB Ethernet Gadget support
+   KCONFIG:= \
+ 	CONFIG_USB_ETH \
+ 	CONFIG_USB_ETH_RNDIS=y \
+ 	CONFIG_USB_ETH_EEM=y
+-  DEPENDS:=+kmod-usb-gadget
+   FILES:=$(LINUX_DIR)/drivers/usb/gadget/g_ether.ko
+   AUTOLOAD:=$(call AutoLoad,52,g_ether)
+-  $(call AddDepends/usb)
++  $(call AddDepends/usb-gadget)
+ endef
+ 
+-define KernelPackage/usb-eth-gadget/description
++define KernelPackage/usb-gadget-eth/description
+   Kernel support for USB Ethernet Gadget.
+ endef
+ 
+-$(eval $(call KernelPackage,usb-eth-gadget))
++$(eval $(call KernelPackage,usb-gadget-eth))
+ 
++define KernelPackage/usb-gadget-file-storage
++  TITLE:=USB File-backed Storage Gadget support
++  KCONFIG:=CONFIG_USB_FILE_STORAGE CONFIG_USB_FILE_STORAGE_TEST=n
++  FILES:=$(LINUX_DIR)/drivers/usb/gadget/g_file_storage.ko
++  AUTOLOAD:=$(call AutoLoad,52,g_file_storage)
++  $(call AddDepends/usb-gadget)
++endef
+ 
++define KernelPackage/usb-gadget-file-storage/description
++  Kernel support for USB File-backed storage Gadget.
++endef
++
++$(eval $(call KernelPackage,usb-gadget-file-storage))
++
++define KernelPackage/usb-gadget-mass-storage
++  TITLE:=USB Mass Storage Gadget support
++  KCONFIG:=CONFIG_USB_MASS_STORAGE
++  FILES:=$(LINUX_DIR)/drivers/usb/gadget/g_mass_storage.ko
++  AUTOLOAD:=$(call AutoLoad,52,g_mass_storage)
++  $(call AddDepends/usb-gadget)
++endef
++
++define KernelPackage/usb-gadget-mass-storage/description
++  Kernel support for USB Mass Storage Gadget.
++endef
++
++$(eval $(call KernelPackage,usb-gadget-mass-storage))
++
++define KernelPackage/usb-gadget-serial
++  TITLE:=USB Serial Gadget support
++  KCONFIG:=CONFIG_USB_G_SERIAL
++  FILES:=$(LINUX_DIR)/drivers/usb/gadget/g_serial.ko
++  AUTOLOAD:=$(call AutoLoad,52,g_serial)
++  $(call AddDepends/usb-gadget)
++endef
++
++
++
+ define KernelPackage/usb-uhci
+   TITLE:=Support for UHCI controllers
+   KCONFIG:= \
+Index: trunk/package/kernel/modules/video.mk
+===================================================================
+--- trunk/package/kernel/modules/video.mk	(revision 27590)
++++ trunk/package/kernel/modules/video.mk	(working copy)
+@@ -119,7 +119,7 @@
+   DEPENDS:=@USB_SUPPORT +kmod-usb-core
+   KCONFIG:=CONFIG_USB_SN9C102
+   FILES:=$(LINUX_DIR)/drivers/media/video/sn9c102/sn9c102.ko
+-  AUTOLOAD:=$(call AutoLoad,70,gspca_sn9c20x)
++  AUTOLOAD:=$(call AutoLoad,70,sn9c102)
+   $(call AddDepends/video)
+ endef
+ 
+@@ -331,7 +331,7 @@
+   TITLE:=sn9c20x webcam support
+   KCONFIG:=CONFIG_USB_GSPCA_SN9C20X
+   FILES:=$(LINUX_DIR)/drivers/media/video/gspca/gspca_sn9c20x.ko
+-  AUTOLOAD:=$(call AutoLoad,75,sn9c20x)
++  AUTOLOAD:=$(call AutoLoad,75,gspca_sn9c20x)
+   $(call AddDepends/video-gspca)
+ endef
+ 
+Index: trunk/package/mac80211/patches/022-atomic64_backport.patch
+===================================================================
+--- trunk/package/mac80211/patches/022-atomic64_backport.patch	(revision 27590)
++++ trunk/package/mac80211/patches/022-atomic64_backport.patch	(working copy)
+@@ -5,7 +5,7 @@
+  	kstrtox.o
+  
+ +ifndef CONFIG_64BIT
+-+ifndef CONFIG_GENERIC_ATOMIC64
+++ifdef CONFIG_GENERIC_ATOMIC64
+ +  compat-y += compat_atomic.o
+ +endif
+ +endif
+@@ -15,7 +15,7 @@
+  #define list_entry_rcu(ptr, type, member) \
+  	container_of(rcu_dereference(ptr), type, member)
+  
+-+#ifndef CONFIG_64BIT
+++#ifdef CONFIG_GENERIC_ATOMIC64
+ +
+ +typedef struct {
+ +	long long counter;
+Index: trunk/package/madwifi/Makefile
+===================================================================
+--- trunk/package/madwifi/Makefile	(revision 27590)
++++ trunk/package/madwifi/Makefile	(working copy)
+@@ -225,6 +225,10 @@
+ 		$(PKG_BUILD_DIR)/hal/public/*.inc
+ 	$(SED) 's,march=armv4,march=armv5te,' \
+ 		$(PKG_BUILD_DIR)/hal/public/xscale*.inc
++	$(SED) 's,march=armv6j,march=armv6k,' \
++		$(PKG_BUILD_DIR)/hal/public/arm11*.inc
++	$(SED) 's,mtune=arm1136j-s,mtune=mpcore,' \
++		$(PKG_BUILD_DIR)/hal/public/arm11*.inc
+ endef
+ 
+ ifeq ($(findstring AHB,$(BUS)),AHB)
