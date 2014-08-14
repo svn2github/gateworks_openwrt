@@ -7,7 +7,7 @@ SRCREV_openwrt=36311
 SRCREV_luci=9809
 # list of pinned feeds: <feedname>:<feedurl>[:svnrevision]
 FEEDS = \
-	gateworks;http://svn.gateworks.com/openwrt/trunk/packages \
+	gateworks;http://svn.gateworks.com/openwrt/branches/packages_13.06 \
 	luci;http://svn.luci.subsignal.org/luci/trunk;${SRCREV_luci} \
 	packages;svn://svn.openwrt.org/openwrt/packages;${SRCREV_openwrt}
 
@@ -41,6 +41,7 @@ ${OPENWRT}:
 	    $(eval url  = $(word 2,$(subst ;, ,$(feed)))) \
 	    $(eval rev  = $(or $(word 3,$(subst ;, ,$(feed))),HEAD)) \
 	    \
+	    echo "svn checkout -r$(rev) $(url) ${OPENWRT}/feeds/$(name)"; \
 	    svn checkout -r$(rev) $(url) ${OPENWRT}/feeds/$(name) || exit 1; \
 	)
 	@echo "Fetching pinned dirs..."
@@ -48,6 +49,7 @@ ${OPENWRT}:
 	    $(eval dir = $(word 1,$(subst ;, ,$(pin)))) \
 	    $(eval rev = $(or $(word 2,$(subst ;, ,$(pin))),HEAD)) \
 	    \
+	    echo "svn update -r$(rev) ${OPENWRT}/$(dir)"; \
 	    svn update -r$(rev) ${OPENWRT}/$(dir) || exit 1; \
 	)
 	@echo "Creating package symlinks..."
@@ -82,7 +84,7 @@ ifdef BUILD_BOOTLOADERS
 bootloader/laguna:
 	@echo "Fetching source for $@..."
 	mkdir -p bootloader
-	svn co http://svn.gateworks.com/laguna/trunk/u-boot-2008.10 $@
+	svn co http://svn.gateworks.com/laguna/u-boot-2008.10 $@
 bootloader/laguna/u-boot_nor.bin: bootloader/laguna
 	@echo "Building $@..."
 	( cd bootloader/laguna; \
@@ -112,7 +114,7 @@ bootloader/laguna/u-boot_nor.bin:
 	rm -f bootloader/laguna/u-boot_nor.bin
 	@echo "Fetching $@..."
 	mkdir -p bootloader/laguna
-	svn export http://svn.gateworks.com/laguna/trunk/images/u-boot_nor.bin \
+	svn export http://svn.gateworks.com/laguna/images/u-boot_nor.bin \
 			bootloader/laguna/u-boot_nor.bin
 
 .PHONY:bootloader/laguna/u-boot_spi.bin
@@ -120,7 +122,7 @@ bootloader/laguna/u-boot_spi.bin:
 	rm -f bootloader/laguna/u-boot_spi.bin
 	@echo "Fetching $@..."
 	mkdir -p bootloader/laguna
-	svn export http://svn.gateworks.com/laguna/trunk/images/u-boot_spi.bin \
+	svn export http://svn.gateworks.com/laguna/images/u-boot_spi.bin \
 			bootloader/laguna/u-boot_spi.bin
 endif
 

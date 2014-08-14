@@ -66,7 +66,7 @@ bootloader/ventana/u-boot.img: bootloader/ventana
 bootloader/laguna:
 	@echo "Fetching source for $@..."
 	mkdir -p bootloader
-	svn co http://svn.gateworks.com/laguna/trunk/u-boot-2008.10 $@
+	svn co http://svn.gateworks.com/laguna/u-boot-2008.10 $@
 bootloader/laguna/u-boot_nor.bin: bootloader/laguna
 	@echo "Building $@..."
 	( cd bootloader/laguna; \
@@ -96,7 +96,7 @@ bootloader/ventana/SPL:
 	rm -f bootloader/ventana/SPL
 	@echo "Fetching $@..."
 	mkdir -p bootloader/ventana
-	svn export http://svn.gateworks.com/ventana/trunk/images/SPL \
+	svn export http://svn.gateworks.com/ventana/images/SPL \
 			bootloader/ventana/SPL
 
 .PHONY:bootloader/ventana/u-boot.img
@@ -104,9 +104,9 @@ bootloader/ventana/u-boot.img:
 	rm -f bootloader/ventana/u-boot.img bootloader/ventana/SPL
 	@echo "Fetching $@..."
 	mkdir -p bootloader/ventana
-	svn export http://svn.gateworks.com/ventana/trunk/images/u-boot.img \
+	svn export http://svn.gateworks.com/ventana/images/u-boot.img \
 			bootloader/ventana/u-boot.img
-	svn export http://svn.gateworks.com/ventana/trunk/images/SPL \
+	svn export http://svn.gateworks.com/ventana/images/SPL \
 			bootloader/ventana/SPL
 
 .PHONY:bootloader/laguna/u-boot_nor.bin
@@ -114,7 +114,7 @@ bootloader/laguna/u-boot_nor.bin:
 	rm -f bootloader/laguna/u-boot_nor.bin
 	@echo "Fetching $@..."
 	mkdir -p bootloader/laguna
-	svn export http://svn.gateworks.com/laguna/trunk/images/u-boot_nor.bin \
+	svn export http://svn.gateworks.com/laguna/images/u-boot_nor.bin \
 			bootloader/laguna/u-boot_nor.bin
 
 .PHONY:bootloader/laguna/u-boot_spi.bin
@@ -122,7 +122,7 @@ bootloader/laguna/u-boot_spi.bin:
 	rm -f bootloader/laguna/u-boot_spi.bin
 	@echo "Fetching $@..."
 	mkdir -p bootloader/laguna
-	svn export http://svn.gateworks.com/laguna/trunk/images/u-boot_spi.bin \
+	svn export http://svn.gateworks.com/laguna/images/u-boot_spi.bin \
 			bootloader/laguna/u-boot_spi.bin
 endif
 
