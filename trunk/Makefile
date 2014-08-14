@@ -138,7 +138,7 @@ images/ventana: bootloader/ventana/SPL bootloader/ventana/u-boot.img
 		../scripts/mkimage_jtag \
 			../bootloader/ventana/SPL \
 			../bootloader/ventana/u-boot.img \
-			> ../bootloader/ventana/u-boot.bin; \
+			> ../bootloader/ventana/u-boot_spl.bin; \
 		../scripts/mkimage_jtag \
 			../bootloader/ventana/SPL \
 			../bootloader/ventana/u-boot.img \
