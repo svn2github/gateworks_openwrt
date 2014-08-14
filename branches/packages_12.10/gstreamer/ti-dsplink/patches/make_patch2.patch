@@ -1,0 +1,145 @@
+--- a/dsplink/make/Linux/davinci_uclibc.mk	2011-05-19 15:52:31.000000000 -0400
++++ b/dsplink/make/Linux/davinci_uclibc.mk	2011-05-19 16:02:57.000000000 -0400
+@@ -1,10 +1,10 @@
+ #   ============================================================================
+-#   @file   davinci_uclibc.mk
++#   @file   davinci_2.6.mk
+ #
+ #   @path   $(DSPLINK)/make/Linux/
+ #
+ #   @desc   This makefile defines OS specific macros used by MAKE system for
+-#           the Montavista Pro 5.0 Linux distribution with uclibc.
++#           the Montavista Pro 5.0 Linux distribution.
+ #
+ #   @ver    1.65.00.02
+ #   ============================================================================
+@@ -40,9 +40,9 @@
+ #   ============================================================================
+ 
+ 
+-ifndef DM6446_UCLIBC5_0_MK
++ifndef DM6446_LINUX2_6_MK
+ 
+-define DM6446_UCLIBC5_0_MK
++define DM6446_LINUX2_6_MK
+ endef
+ 
+ 
+@@ -60,17 +60,17 @@
+ #   ----------------------------------------------------------------------------
+ #   Base directory for the GPP OS
+ #   ----------------------------------------------------------------------------
+-BASE_BUILDOS    := ${HOME}/linux-davinci/git
++BASE_BUILDOS    := ${LINUXKERNEL_INSTALL_DIR}
+ 
+ #   ----------------------------------------------------------------------------
+ #   Base for toolchain
+ #   ----------------------------------------------------------------------------
+-BASE_TOOLCHAIN  := ${HOME}/uclibc_toolchain/staging_dir
++BASE_TOOLCHAIN    := ${MVTOOL_DIR}
+ 
+ #   ----------------------------------------------------------------------------
+ #   Base for code generation tools - compiler, linker, archiver etc.
+ #   ----------------------------------------------------------------------------
+-BASE_CGTOOLS    := ${BASE_TOOLCHAIN}/bin
++BASE_CGTOOLS    := $(BASE_TOOLCHAIN)/bin
+ 
+ #   ----------------------------------------------------------------------------
+ #   Base directory for include files provided by GPP OS
+@@ -78,8 +78,8 @@
+ BASE_OSINC      := $(BASE_BUILDOS)/include
+ 
+ OSINC_GENERIC   := $(BASE_OSINC)
+-OSINC_PLATFORM  := $(BASE_TOOLCHAIN)/lib/gcc/arm-linux-uclibcgnueabi/4.2.1/include
+-OSINC_TARGET    := $(BASE_TOOLCHAIN)/arm-linux-uclibcgnueabi/sys-include
++OSINC_PLATFORM  := $(BASE_TOOLCHAIN)/lib/gcc/arm-openwrt-linux-uclibcgnueabi/4.3.3/include
++OSINC_TARGET    := $(BASE_TOOLCHAIN)/include
+ 
+ ifneq ("$(VARIANT)", "")
+ OSINC_VARIANT   := $(BASE_OSINC)
+@@ -107,10 +107,10 @@
+ #   ----------------------------------------------------------------------------
+ #   Name of the compiler
+ #   ----------------------------------------------------------------------------
+-COMPILER        := $(BASE_CGTOOLS)/arm-linux-gcc
+-LD              := $(BASE_CGTOOLS)/arm-linux-ld
++COMPILER        := $(BASE_CGTOOLS)/arm-openwrt-linux-gcc
++LD              := $(BASE_CGTOOLS)/arm-openwrt-linux-ld
+ 
+-CROSS_COMPILE   := arm-linux-
++CROSS_COMPILE   := arm-openwrt-linux-
+ export CROSS_COMPILE
+ 
+ #   ----------------------------------------------------------------------------
+@@ -129,45 +129,43 @@
+ #   ----------------------------------------------------------------------------
+ #   Standard flags for the compiler
+ #   ----------------------------------------------------------------------------
+-STD_KRNL_FLAGS  := -c -iwithprefix include -Iinclude -include $(BASE_OSINC)/linux/autoconf.h -Wall  -Wstrict-prototypes -Wno-trigraphs -fno-strict-aliasing -fno-common -fno-omit-frame-pointer -mapcs -mno-sched-prolog -mlittle-endian -D__LINUX_ARM_ARCH__=5 -march=armv5t -mtune=arm9tdmi  -msoft-float -Uarm -Wdeclaration-after-statement -Os
+ STD_USER_FLAGS  := -Wall -c
+ 
+ #   ----------------------------------------------------------------------------
+ #   Flags for the compiler when building a library
+ #   ----------------------------------------------------------------------------
+-LIB_CC_FLAGS        :=
++EXE_CC_FLAGS    :=
+ 
+ #   ----------------------------------------------------------------------------
+ #   Standard flags for the compiler when building an executable
+ #   ----------------------------------------------------------------------------
+-EXE_CC_FLAGS        :=
++DRV_CC_FLAGS    := -nostdinc
+ 
+ #   ----------------------------------------------------------------------------
+ #   Flags for the compiler when building a driver
+ #   ----------------------------------------------------------------------------
+-DRV_CC_FLAGS        := -nostdinc
++LIB_CC_FLAGS    :=
+ 
+ #   ----------------------------------------------------------------------------
+ #   Standard definitions for the compiler
+ #   ----------------------------------------------------------------------------
+ STD_CC_DEFNS    := -D_REENTRANT
+ 
+-
+ #   ============================================================================
+ #   ARCHIVER2 - This denotes the archiver.
+ #   ============================================================================
+-ARCHIVER        := $(BASE_CGTOOLS)/arm-linux-ar
++ARCHIVER        := $(BASE_CGTOOLS)/arm-openwrt-linux-ar
+ 
+ #   ----------------------------------------------------------------------------
+ #   Standard flags for the archiver
+ #   ----------------------------------------------------------------------------
+-STD_AR_FLAGS    := -r
++STD_AR_FLAGS    := -rs
+ 
+ 
+ #   ============================================================================
+ #   LINKER used for Library & Driver build
+ #   ============================================================================
+-LINKER      := $(BASE_CGTOOLS)/arm-linux-gcc
++LINKER      := $(BASE_CGTOOLS)/arm-openwrt-linux-gcc
+ 
+ #   ----------------------------------------------------------------------------
+ #   Command line switches used by the linker
+@@ -183,8 +181,12 @@
+ #   ----------------------------------------------------------------------------
+ #   Flags for the LD when building an executable
+ #   ----------------------------------------------------------------------------
+-EXE_LD_FLAGS        := -lpthread -lc
++STD_LD_FLAGS    :=
+ 
++#   ----------------------------------------------------------------------------
++#   Standard flags for the LD
++#   ----------------------------------------------------------------------------
++EXE_LD_FLAGS    := -lpthread -lc
+ 
+ #   ----------------------------------------------------------------------------
+ #   Standard flags for the archiver
+@@ -206,4 +208,4 @@
+                $(BASE_BUILDOS)/vmlinux
+ 
+ 
+-`endif   # ifndef DM6446_UCLIBC5_0_MK
++endif   # ifndef DM6446_LINUX2_6_MK
