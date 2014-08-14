@@ -1,0 +1,29 @@
+--- a/packages/ti/sdo/dmai/linux/dm6446/Smooth.c	2011-11-28 10:42:25.000000000 -0500
++++ b/packages/ti/sdo/dmai/linux/dm6446/Smooth.c	2011-11-28 11:40:37.000000000 -0500
+@@ -46,7 +46,7 @@
+ #include <errno.h>
+ 
+ #ifdef CONFIG_RESIZER
+-#include <linux/davinci_resizer.h>
++#include <media/davinci/davinci_resizer.h>
+ #endif
+ 
+ #include <ti/sdo/dmai/Cpu.h>
+@@ -186,7 +186,7 @@
+ #ifdef CONFIG_RESIZER
+     BufferGfx_Dimensions srcDim, dstDim;
+     Int width, height;
+-    struct rsz_params params = {
++    struct rsz_params_t params = {
+         0,                              /* in_hsize (set at run time) */
+         0,                              /* in_vsize (set at run time) */
+         0,                              /* in_pitch (set at run time) */
+@@ -271,7 +271,7 @@
+                    Buffer_Handle hSrcBuf, Buffer_Handle hDstBuf)
+ {
+ #ifdef CONFIG_RESIZER
+-    struct rsz_resize   rsz;
++    struct rsz_resize_t   rsz;
+     int                 rszError;
+     UInt32              srcOffset, dstOffset;
+ 

@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# register commit handler and add default mcast route
+[ -f /etc/config/ucitrack ] && \
+[ "$(uci get ucitrack.@tivideo[0] 2>/dev/null)" != "tivideo" ] && \
+uci batch <<-EOF >/dev/null 2>/dev/null
+	# add init script hook
+	add ucitrack tivideo
+	set ucitrack.@tivideo[-1].init=tivideo
+	commit ucitrack
+
+	# add default mcast route to lan if
+	add network route
+	set network.@route[-1].interface=lan
+	set network.@route[-1].target=224.0.0.0
+	set network.@route[-1].netmask=240.0.0.0
+	commit network
+EOF
+
+exit 0

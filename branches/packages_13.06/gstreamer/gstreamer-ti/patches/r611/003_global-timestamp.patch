@@ -1,0 +1,41 @@
+Use buffer timestamps at the input to the decoder instead of the output of
+the decoder to avoid jitter caused by frames taking a variable amount of time
+to encode
+--- a/src/gsttividenc1.c
++++ b/src/gsttividenc1.c
+@@ -61,6 +61,11 @@
+ GST_DEBUG_CATEGORY_STATIC (gst_tividenc1_debug);
+ #define GST_CAT_DEFAULT gst_tividenc1_debug
+ 
++#define TIMESTAMP_GLOBAL
++#ifdef TIMESTAMP_GLOBAL
++guint64 timestamp_global = 0;
++#endif
++
+ #define DEFAULT_BIT_RATE 2000000
+ #define INVALID_DEVICE   Cpu_Device_COUNT
+ 
+@@ -1174,6 +1179,11 @@ static GstFlowReturn gst_tividenc1_chain
+         goto exit;
+     }
+ 
++#ifdef TIMESTAMP_GLOBAL
++		timestamp_global = GST_BUFFER_TIMESTAMP(buf);
++#endif
++			
++
+ exit:
+     gst_buffer_unref(buf);
+     return flow;
+@@ -1866,7 +1876,11 @@ static void* gst_tividenc1_encode_thread
+         if (videnc1->genTimeStamps &&
+             GST_CLOCK_TIME_IS_VALID(encDataTime)) {
+             GST_LOG("video timestamp value: %llu\n", encDataTime);
++#ifdef TIMESTAMP_GLOBAL
++						GST_BUFFER_TIMESTAMP(outBuf) = timestamp_global;
++#else
+             GST_BUFFER_TIMESTAMP(outBuf) = encDataTime;
++#endif
+             GST_BUFFER_DURATION(outBuf)  = frameDuration;
+         }
+         else {

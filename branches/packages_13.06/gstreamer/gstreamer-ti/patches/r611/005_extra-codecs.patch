@@ -1,0 +1,29 @@
+--- a/src/gstticodecs_dm6446.c
++++ b/src/gstticodecs_dm6446.c
+@@ -34,6 +34,11 @@ GstTICodec gst_ticodec_codecs[] = {
+         "g711dec",               /* String name of codec used by CE          */
+         decodeEngine             /* Engine that contains this codec          */
+     },
++    {
++        "G.711 Speech Encoder",  /* String name of codec used by plugin      */
++        "g711enc",               /* String name of codec used by CE          */
++        encodeEngine             /* Engine that contains this codec          */
++    },
+ 
+     /* Audio Codecs */
+     {
+@@ -71,6 +76,14 @@ GstTICodec gst_ticodec_codecs[] = {
+         "H.264 Video Encoder",  /* String name of codec used by plugin       */
+         "h264enc",              /* String name of codec used by CE           */
+         encodeEngine            /* Engine that contains this codec           */
++    }, {
++        "JPEG Image Encoder",  /* String name of codec used by plugin       */
++        "jpegenc",             /* String name of codec used by CE           */
++        encodeEngine            /* Engine that contains this codec           */
++    }, {
++        "JPEG Image Decoder",  /* String name of codec used by plugin       */
++        "jpegdec",             /* String name of codec used by CE           */
++        decodeEngine            /* Engine that contains this codec           */
+     },
+ 
+     { NULL }

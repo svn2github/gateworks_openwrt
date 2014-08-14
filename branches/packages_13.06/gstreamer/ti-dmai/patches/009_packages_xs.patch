@@ -1,0 +1,70 @@
+--- a/packages/ti/sdo/dmai/package.xs	2011-11-28 10:42:25.000000000 -0500
++++ b/packages/ti/sdo/dmai/package.xs	2011-11-28 14:30:31.000000000 -0500
+@@ -67,16 +67,16 @@
+     var suffix;
+ 
+     if ("findSuffix" in  prog.build.target) {
+-        var suffixes = ["470MV", "64P"];
++        var suffixes = ["470uC", "64P"];
+         suffix = prog.build.target.findSuffix(suffixes);
+     }
+     else {
+         /* Primitive compatiblity check for older XDC tools than 3.05 */
+-        if (prog.build.target.suffix == "470MV" ||
++        if (prog.build.target.suffix == "470uC" ||
+             prog.build.target.suffix == "v5t" ||
+             prog.build.target.suffix == "v5T") {
+ 
+-            suffix = "470MV";
++            suffix = "470uC";
+         } 
+         else if (prog.build.target.suffix == "64P" ||
+                  prog.build.target.suffix == "64" ||
+@@ -100,36 +100,36 @@
+             lib = "lib/dmai_bios_dm6467.a64P";
+         }
+         else {
+-            lib = "lib/dmai_bios_" + prog.cpu.deviceName + ".a470MV";
++            lib = "lib/dmai_bios_" + prog.cpu.deviceName + ".a470uC";
+         }
+     }
+-    else if (suffix == "470MV") {
++    else if (suffix == "470uC") {
+         if (prog.cpu.deviceName == "TMS320CDM6446") {
+-            lib = "lib/dmai_linux_dm6446.a470MV";
++            lib = "lib/dmai_linux_dm6446.a470uC";
+         }
+         else if (prog.cpu.deviceName == "TMS320CDM355") {
+-            lib = "lib/dmai_linux_dm355.a470MV";
++            lib = "lib/dmai_linux_dm355.a470uC";
+         }
+         else if (prog.cpu.deviceName == "TMS320CDM6467") {
+-            lib = "lib/dmai_linux_dm6467.a470MV";
++            lib = "lib/dmai_linux_dm6467.a470uC";
+         }
+         else if (prog.cpu.deviceName == "OMAPL137") {
+-            lib = "lib/dmai_linux_omapl137.a470MV";
++            lib = "lib/dmai_linux_omapl137.a470uC";
+         }
+         else if (prog.cpu.deviceName == "OMAP3530") {
+-            lib = "lib/dmai_linux_omap3530.a470MV";
++            lib = "lib/dmai_linux_omap3530.a470uC";
+         }
+         else if (prog.cpu.deviceName == "TMS320DM357") {
+-            lib = "lib/dmai_linux_dm357.a470MV"
++            lib = "lib/dmai_linux_dm357.a470uC"
+         }
+         else if (prog.cpu.deviceName == "OMAPL138") {
+-            lib = "lib/dmai_linux_omapl138.a470MV"
++            lib = "lib/dmai_linux_omapl138.a470uC"
+         }
+         else if (prog.cpu.deviceName == "TMS320DM365") {
+-            lib = "lib/dmai_linux_dm365.a470MV";
++            lib = "lib/dmai_linux_dm365.a470uC";
+         }
+         else {
+-            lib = "lib/dmai_linux_" + prog.cpu.deviceName + ".a470MV";
++            lib = "lib/dmai_linux_" + prog.cpu.deviceName + ".a470uC";
+         }
+     }
+ 

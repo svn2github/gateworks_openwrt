@@ -1,0 +1,20 @@
+Index: gst-plugins-good-0.10.23/sys/v4l2/v4l2src_mvl_lsp.c
+===================================================================
+--- gst-plugins-good-0.10.23.orig/sys/v4l2/v4l2src_mvl_lsp.c	2012-02-10 16:32:31.336217948 -0800
++++ gst-plugins-good-0.10.23/sys/v4l2/v4l2src_mvl_lsp.c	2012-02-10 16:33:01.588367955 -0800
+@@ -98,6 +98,7 @@
+     *fps_num = 25;
+     *fps_denom = 1;
+   }
++#if 0 // these are not defined
+   else if (std & V4L2_STD_525P_60) {
+     GST_LOG("found 525p standard\n");
+     *width = 720;
+@@ -167,6 +168,7 @@
+     *fps_num = 24;
+     *fps_denom = 1;
+   }
++#endif
+   else {
+     GST_WARNING("failed to detect video standard\n");
+     *width = 1;

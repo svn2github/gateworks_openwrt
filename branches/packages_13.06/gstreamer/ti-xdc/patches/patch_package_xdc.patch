@@ -1,0 +1,11 @@
+--- a/packages/gnu/targets/package.xdc	2010-02-25 14:23:03.000000000 -0500
++++ b/packages/gnu/targets/package.xdc	2010-05-03 20:46:08.000000000 -0400
+@@ -17,7 +17,7 @@
+  */
+ package gnu.targets [1,0,1] {
+     module Sparc, Linux86, Mingw;
+-    module MVArm9, UCArm9;
++    module UCArm9;
+     interface ITarget;
+ }
+ /*
