@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# Prepare a patched and pinned OpenWrt directory for building
+
+# Directory name for openwrt tree
+OPENWRT=$1
+CONFIG=$2
+
+[ "$OPENWRT" -a -r "$CONFIG" ] || {
+	echo "usage: $0 <openwrtdir> <config>"
+	exit 1
+}
+#[ -r "$OPENWRT" ] && {
+#	echo "Error: $OPENWRT directory already exists"
+#	exit 1
+#}
+. $CONFIG
+
+echo "Fetching Openwrt trunk@r${SRCREV}..."
+svn co -r${SRCREV} svn://svn.openwrt.org/openwrt/trunk ${OPENWRT} || exit 2
+
+echo "Patching..."
+./${OPENWRT}/scripts/patch-kernel.sh ${OPENWRT} ./patches || exit 2
+
+echo "Fetching pinned package feeds..."
+for val in $FEEDS; do
+	name="${val%%;*}"; val="${val#*;}"
+	scm="${val%%;*}"; val="${val#*;}"
+	url="${val%%;*}"; val="${val#*;}"
+	rev="${val%%;*}"; val="${val#*;}"
+	echo ""
+	echo "Fetching $name from $url;$rev..."
+	case "$scm" in
+		git)
+			echo "git clone $url $name"
+			(cd ${OPENWRT}/feeds && git clone $url $name) || exit 2;
+			echo "git checkout $rev"
+			(cd ${OPENWRT}/feeds/$name && git checkout -b $rev $rev) || exit 2;
+			;;
+		svn)
+			svn checkout -r$rev $url ${OPENWRT}/feeds/$name || exit 2;
+			;;
+	esac
+done
+
+echo "Fetching pinned dirs..."
+for val in $PINNINGS; do
+	dir="${val%%;*}"; val="${val#*;}"
+	rev="${val%%;*}"; val="${val#*;}"
+	echo "$dir:$rev..."
+	svn update -r$rev ${OPENWRT}/$dir || exit 2
+done
+echo "Creating package symlinks..."
+make -C ${OPENWRT} defconfig >/dev/null # buildroot needs a valid config
+make -C ${OPENWRT} package/symlinks-install
+
+exit 0

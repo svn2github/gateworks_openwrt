@@ -1,0 +1,18 @@
+#!/bin/sh
+
+DIR=$PWD
+OPENWRT=${1:-trunk}
+
+for target in $(ls ${DIR}/config); do
+	echo "Target: $target"
+	for config in $(ls -A ${DIR}/config/$target); do
+		echo "	Config: $config"
+		cp ${DIR}/config/$target/$config ${OPENWRT}/.config
+		(	cd ${OPENWRT};
+			yes "" | make oldconfig;
+			echo "Changes to config/$target/$config:"
+			../scripts/diff_config .config ${DIR}/config/$target/$config
+			cp .config ${DIR}/config/$target/$config
+		)
+	done
+done

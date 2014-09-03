@@ -1,0 +1,33 @@
+#!/bin/sh
+
+# usage: diff_config [config1 config2]
+#
+# diff sanitized config files (openwrt and kernel) for easy comparison
+#  - strips out blank lines
+#  - strips out comments
+#  - sorts alphabetically
+#
+# If provided no args will diff the current target config from the Gateworks
+# config assuming you are either in the Gateworks patch dir or the Openwrt
+# 'trunk' dir.
+#
+
+OPENWRT=trunk
+[ -d config/imx6 ] && DIR=. || DIR=..
+
+diff_config() {
+	echo "$1" > $DIR/$OPENWRT/tmp/config1
+	sort "$1" | egrep -v '^$|^#' >> $DIR/$OPENWRT/tmp/config1
+	echo "$2" > $DIR/$OPENWRT/tmp/config2
+	sort "$2" | egrep -v '^$|^#' >>$DIR/$OPENWRT/tmp/config2
+
+	diff $DIR/$OPENWRT/tmp/config1 $DIR/$OPENWRT/tmp/config2
+}
+
+if [ -r "$1" -a -r "$2" ]; then
+	diff_config "$1" "$2"
+else
+	TARGET=$(grep CONFIG_TARGET_BOARD $DIR/$OPENWRT/.config | awk -F= '{print $2}' | tr -d \")
+	echo "# TARGET:$TARGET"
+	diff_config "$DIR/config/$TARGET/.config${PROFILE}" "$DIR/$OPENWRT/.config"
+fi
