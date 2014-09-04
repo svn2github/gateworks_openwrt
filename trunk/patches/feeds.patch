@@ -4,7 +4,7 @@ Index: trunk/feeds.conf.default
 +++ trunk/feeds.conf.default	(working copy)
 @@ -1,9 +1,12 @@
 +# Generic Gateworks package feed
-+src-svn gateworks http://svn.gateworks.com/openwrt/trunk/packages
++src-svn gateworks http://svn.gateworks.com/openwrt/packages
 +# Upstream OpenWRT package feeds
  src-git packages https://github.com/openwrt/packages.git
  src-git luci http://git.openwrt.org/project/luci.git
