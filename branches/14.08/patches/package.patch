@@ -1,6 +1,6 @@
 Index: trunk/package/firmware/linux-firmware/Makefile
 ===================================================================
---- trunk/package/firmware/linux-firmware/Makefile	(revision 42000)
+--- trunk/package/firmware/linux-firmware/Makefile	(revision 42297)
 +++ trunk/package/firmware/linux-firmware/Makefile	(working copy)
 @@ -61,3 +61,43 @@
  endef
@@ -48,10 +48,10 @@ Index: trunk/package/firmware/linux-firmware/Makefile
 +$(eval $(call BuildPackage,ar3k-firmware))
 Index: trunk/package/kernel/linux/modules/netdevices.mk
 ===================================================================
---- trunk/package/kernel/linux/modules/netdevices.mk	(revision 42000)
+--- trunk/package/kernel/linux/modules/netdevices.mk	(revision 42297)
 +++ trunk/package/kernel/linux/modules/netdevices.mk	(working copy)
-@@ -129,6 +129,24 @@
- $(eval $(call KernelPackage,et131x))
+@@ -147,6 +147,24 @@
+ $(eval $(call KernelPackage,gw16083))
  
  
 +define KernelPackage/gw16083
@@ -77,7 +77,7 @@ Index: trunk/package/kernel/linux/modules/netdevices.mk
    TITLE:=switch configuration API
 Index: trunk/package/kernel/linux/modules/other.mk
 ===================================================================
---- trunk/package/kernel/linux/modules/other.mk	(revision 42000)
+--- trunk/package/kernel/linux/modules/other.mk	(revision 42297)
 +++ trunk/package/kernel/linux/modules/other.mk	(working copy)
 @@ -40,6 +40,7 @@
  	CONFIG_BLUEZ_HCIUSB \
@@ -176,7 +176,7 @@ Index: trunk/package/kernel/mac80211/patches/921-ath10k-fix-aggregated-4addr-Rx.
 +-- 
 +1.9.1
 +
-Index: trunk/package/kernel/mac80211/patches/999-ath9k_reset_fix.patch
+IndexIndex: trunk/package/kernel/mac80211/patches/999-ath9k_reset_fix.patch
 ===================================================================
 --- trunk/package/kernel/mac80211/patches/999-ath9k_reset_fix.patch	(revision 0)
 +++ trunk/package/kernel/mac80211/patches/999-ath9k_reset_fix.patch	(working copy)

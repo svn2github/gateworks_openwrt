@@ -1,6 +1,6 @@
 Index: trunk/target/linux/cns3xxx/base-files/lib/upgrade/platform.sh
 ===================================================================
---- trunk/target/linux/cns3xxx/base-files/lib/upgrade/platform.sh	(revision 42000)
+--- trunk/target/linux/cns3xxx/base-files/lib/upgrade/platform.sh	(revision 42297)
 +++ trunk/target/linux/cns3xxx/base-files/lib/upgrade/platform.sh	(working copy)
 @@ -56,9 +56,17 @@
  		local append=""

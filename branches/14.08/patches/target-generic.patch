@@ -1,6 +1,6 @@
 Index: trunk/target/linux/generic/patches-3.10/880-gateworks_system_controller.patch
 ===================================================================
---- trunk/target/linux/generic/patches-3.10/880-gateworks_system_controller.patch	(revision 42000)
+--- trunk/target/linux/generic/patches-3.10/880-gateworks_system_controller.patch	(revision 42297)
 +++ trunk/target/linux/generic/patches-3.10/880-gateworks_system_controller.patch	(working copy)
 @@ -28,7 +28,7 @@
   
@@ -80,7 +80,7 @@ Index: trunk/target/linux/generic/patches-3.14/780-igb-Unset-IGB_FLAG_HAS_MSIX-f
 +
 Index: trunk/target/linux/generic/patches-3.14/880-gateworks_system_controller.patch
 ===================================================================
---- trunk/target/linux/generic/patches-3.14/880-gateworks_system_controller.patch	(revision 42000)
+--- trunk/target/linux/generic/patches-3.14/880-gateworks_system_controller.patch	(revision 42297)
 +++ trunk/target/linux/generic/patches-3.14/880-gateworks_system_controller.patch	(working copy)
 @@ -28,7 +28,7 @@
   
