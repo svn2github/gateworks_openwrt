@@ -14,7 +14,6 @@
 #
 MODEL_laguna_spi=cns3xxx:16M:512k:spi
 MODEL_laguna_nor=cns3xxx:16M:384k:nor
-MODEL_ventana=imx61:16M:576k:gw5400
 
 usage() {
    echo "usage: $0 <base-model> <uboot.bin> <openwrt-root> [flash-size]"
@@ -22,7 +21,6 @@ usage() {
    echo " Models:"
    echo "    laguna_spi"
    echo "    laguna_nor"
-   echo "    ventana"
    echo ""
    exit 1
 }
