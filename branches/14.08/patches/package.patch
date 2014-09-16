@@ -623,3 +623,16 @@ Index: trunk/package/kernel/mac80211/patches/999-ath9k_reset_fix.patch
 + 		ath_err(common, "Failed to stop TX DMA, queues=0x%03x!\n", npend);
 + 
 + 	for (i = 0; i < ATH9K_NUM_TX_QUEUES; i++) {
+Index: trunk/package/network/utils/iproute2/patches/300-ip_tiny.patch
+===================================================================
+--- trunk/package/network/utils/iproute2/patches/300-ip_tiny.patch	(revision 42297)
++++ trunk/package/network/utils/iproute2/patches/300-ip_tiny.patch	(working copy)
+@@ -6,7 +6,7 @@
+  
+ +STATIC_SYM_FILTER:=
+ +ifeq ($(IP_CONFIG_TINY),y)
+-+  STATIC_SYM_FILTER:=iplink_can.c iplink_ipoib.c iplink_vxlan.c
+++  STATIC_SYM_FILTER:=iplink_ipoib.c iplink_vxlan.c
+ +  CFLAGS += -DIPROUTE2_TINY
+ +endif
+ +STATIC_SYM_SOURCES:=$(filter-out $(STATIC_SYM_FILTER),$(wildcard *.c))
