@@ -23,6 +23,31 @@ Index: trunk/target/linux/cns3xxx/base-files/lib/upgrade/platform.sh
  	else
  		echo "invalid image"
  	fi
+Index: trunk/target/linux/cns3xxx/files/arch/arm/mach-cns3xxx/laguna.c
+===================================================================
+--- trunk/target/linux/cns3xxx/files/arch/arm/mach-cns3xxx/laguna.c	(revision 42297)
++++ trunk/target/linux/cns3xxx/files/arch/arm/mach-cns3xxx/laguna.c	(working copy)
+@@ -809,7 +809,7 @@
+ 
+ 	platform_device_register(&laguna_i2c_controller);
+ 
+-	/* Set ext_int 0-3 drive strength to 21 mA */
++	/* Set I2C 0-3 drive strength to 21 mA */
+ 	reg = MISC_IO_PAD_DRIVE_STRENGTH_CTRL_B;
+ 	*reg |= 0x300;
+ 
+@@ -817,9 +817,8 @@
+ 	reg = MISC_GPIOB_PIN_ENABLE_REG;
+ 	*reg |= BIT(12) | BIT(13);
+ 
+-	/* Enable MMC/SD pins */
+-	reg = MISC_GPIOA_PIN_ENABLE_REG;
+-	*reg |= 0xf80;
++	/* Enable SPI pins */
++	*reg |= BIT(7) | BIT(8) | BIT(9) | BIT(10) | BIT(11);
+ 
+ 	cns3xxx_pwr_clk_en(1 << PM_CLK_GATE_REG_OFFSET_SPI_PCM_I2C);
+ 	cns3xxx_pwr_power_up(1 << PM_CLK_GATE_REG_OFFSET_SPI_PCM_I2C);
 Index: trunk/target/linux/cns3xxx/patches-3.10/066-pci_isolated_interrupts.patch
 ===================================================================
 --- trunk/target/linux/cns3xxx/patches-3.10/066-pci_isolated_interrupts.patch	(revision 0)
