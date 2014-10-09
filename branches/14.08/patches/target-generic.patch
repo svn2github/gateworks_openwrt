@@ -1,3 +1,21 @@
+Index: trunk/target/linux/generic/patches-3.10/350-gpio-pca953x-fix_gpio_input_on_gpio_offsets.patch
+===================================================================
+--- trunk/target/linux/generic/patches-3.10/350-gpio-pca953x-fix_gpio_input_on_gpio_offsets.patch	(revision 0)
++++ trunk/target/linux/generic/patches-3.10/350-gpio-pca953x-fix_gpio_input_on_gpio_offsets.patch	(working copy)
+@@ -0,0 +1,13 @@
++Index: linux-3.10.49/drivers/gpio/gpio-pca953x.c
++===================================================================
++--- linux-3.10.49.orig/drivers/gpio/gpio-pca953x.c	2014-07-17 15:58:15.000000000 -0700
+++++ linux-3.10.49/drivers/gpio/gpio-pca953x.c	2014-10-08 14:49:46.974913692 -0700
++@@ -308,7 +308,7 @@
++ 		return 0;
++ 	}
++ 
++-	return (reg_val & (1u << off)) ? 1 : 0;
+++	return (reg_val & (1u << (off % BANK_SZ))) ? 1 : 0;
++ }
++ 
++ static void pca953x_gpio_set_value(struct gpio_chip *gc, unsigned off, int val)
 Index: trunk/target/linux/generic/patches-3.10/880-gateworks_system_controller.patch
 ===================================================================
 --- trunk/target/linux/generic/patches-3.10/880-gateworks_system_controller.patch	(revision 42297)
