@@ -1,0 +1,32 @@
+#!/bin/sh
+#
+# Image a block storage device from a tarball of a root filesystem using a
+# single ext4 partition.
+#
+
+DEV=$1
+ROOTFS=$2
+
+[ -b "$DEV" -a -r "$ROOTFS" ] || {
+	echo "usage: $0 <device> <rootfs-tarball>"
+	exit 1
+}
+
+mounts=$(grep ^$DEV /proc/mounts)
+[ $? -eq 0 ] && {
+	echo "Error: $DEV has mounted partitions:"
+	echo $mounts
+	exit 1
+}
+
+echo "Installing to $DEV..."
+
+# partition disk with a single ext4 partition
+printf ",,83,,\n" | sfdisk ${DEV}
+sync
+sudo sfdisk -R $DEV
+mkfs.ext4 -L ROOTFS ${DEV}1
+sleep 2
+udisks --mount ${DEV}1
+tar xvf $ROOTFS -C /media/ROOTFS
+sync && sudo umount ${DEV}?
