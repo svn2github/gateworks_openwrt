@@ -61,3 +61,32 @@ Index: trunk/target/linux/imx6/patches-3.14/0009-ARM-imx-dts-add-GW52xx-can-supp
 + 		pinctrl_gpmi_nand: gpminandgrp {
 + 			fsl,pins = <
 + 				MX6QDL_PAD_NANDF_CLE__NAND_CLE		0xb0b1
+Index: trunk/target/linux/imx6/patches-3.14/207-pci_designware_revert-pcie-map-irq-function.patch
+===================================================================
+--- trunk/target/linux/imx6/patches-3.14/207-pci_designware_revert-pcie-map-irq-function.patch	(revision 0)
++++ trunk/target/linux/imx6/patches-3.14/207-pci_designware_revert-pcie-map-irq-function.patch	(working copy)
+@@ -0,0 +1,24 @@
++Index: linux-3.14.16/drivers/pci/host/pcie-designware.c
++===================================================================
++--- linux-3.14.16.orig/drivers/pci/host/pcie-designware.c	2014-10-23 15:59:17.978240312 -0700
+++++ linux-3.14.16/drivers/pci/host/pcie-designware.c	2014-10-23 16:04:32.478231239 -0700
++@@ -744,9 +744,16 @@
++ 	struct pcie_port *pp = sys_to_pcie(dev->bus->sysdata);
++ 	int irq;
++ 
++-	irq = of_irq_parse_and_map_pci(dev, slot, pin);
++-	if (!irq)
++-		irq = pp->irq;
+++	switch (pin) {
+++	case 1: irq = pp->irq; break;
+++	case 2: irq = pp->irq - 1; break;
+++	case 3: irq = pp->irq - 2; break;
+++	case 4: irq = pp->irq - 3; break;
+++	default: irq = -1; break;
+++	}
+++
+++	dev_info(&dev->dev, "map_irq: %04x:%04x slot%d pin%d irq%d\n",
+++		 dev->vendor, dev->device, slot, pin, irq);
++ 
++ 	return irq;
++ }
