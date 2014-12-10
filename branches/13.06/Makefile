@@ -65,19 +65,19 @@ ${OPENWRT}:
 imx61: ${OPENWRT}
 	@echo "Building $@"
 	cp config/$@/.config${PROFILE} ${OPENWRT}/.config
-	time make -C ${OPENWRT} ${MAKEARGS} V=99 2>&1 | tee logs/build_$@.log
+	make -C ${OPENWRT} ${MAKEARGS} V=99 2>&1 | tee logs/build_$@.log
 
 # Build for Laguna family
 cns3xxx: ${OPENWRT}
 	@echo "Building $@"
 	cp config/$@/.config${PROFILE} ${OPENWRT}/.config
-	time make -C ${OPENWRT} ${MAKEARGS} V=99 2>&1 | tee logs/build_$@.log
+	make -C ${OPENWRT} ${MAKEARGS} V=99 2>&1 | tee logs/build_$@.log
 
 # Build for Avila/Cambria family
 ixp4xx: ${OPENWRT}
 	@echo "Building $@"
 	cp config/$@/.config${PROFILE} ${OPENWRT}/.config
-	time make -C ${OPENWRT} ${MAKEARGS} V=99 2>&1 | tee logs/build_$@.log
+	make -C ${OPENWRT} ${MAKEARGS} V=99 2>&1 | tee logs/build_$@.log
 
 ifdef BUILD_BOOTLOADERS
 # Build laguna family bootloaders
