@@ -29,7 +29,7 @@ imx6: ${OPENWRT}
 	@if [ -r "config/$@/.config${PROFILE}" ]; then \
 		echo "Building $@"; \
 		cp config/$@/.config${PROFILE} ${OPENWRT}/.config; \
-		time make -C ${OPENWRT} ${MAKEARGS} V=99 2>&1 | tee logs/build_$@.log; \
+		make -C ${OPENWRT} ${MAKEARGS} V=99 2>&1 | tee logs/build_$@.log; \
 	fi
 
 # Build for Laguna family
@@ -37,7 +37,7 @@ cns3xxx: ${OPENWRT}
 	@if [ -r "config/$@/.config${PROFILE}" ]; then \
 		echo "Building $@"; \
 		cp config/$@/.config${PROFILE} ${OPENWRT}/.config; \
-		time make -C ${OPENWRT} ${MAKEARGS} V=99 2>&1 | tee logs/build_$@.log; \
+		make -C ${OPENWRT} ${MAKEARGS} V=99 2>&1 | tee logs/build_$@.log; \
 	fi
 
 # Build for Avila/Cambria family
@@ -45,7 +45,7 @@ ixp4xx: ${OPENWRT}
 	@if [ -r "config/$@/.config${PROFILE}" ]; then \
 		echo "Building $@"; \
 		cp config/$@/.config${PROFILE} ${OPENWRT}/.config; \
-		time make -C ${OPENWRT} ${MAKEARGS} V=99 2>&1 | tee logs/build_$@.log; \
+		make -C ${OPENWRT} ${MAKEARGS} V=99 2>&1 | tee logs/build_$@.log; \
 	fi
 
 ifdef BUILD_BOOTLOADERS
