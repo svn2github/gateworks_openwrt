@@ -57,6 +57,38 @@ Index: trunk/target/linux/imx6/config-3.14
  CONFIG_USE_OF=y
  CONFIG_VECTORS_BASE=0xffff0000
  CONFIG_VFP=y
+Index: trunk/target/linux/imx6/files-3.14/drivers/net/phy/gw16083.c
+===================================================================
+--- trunk/target/linux/imx6/files-3.14/drivers/net/phy/gw16083.c	(revision 42297)
++++ trunk/target/linux/imx6/files-3.14/drivers/net/phy/gw16083.c	(working copy)
+@@ -485,9 +485,13 @@
+ 					state->sfp_compat = false;
+ 				else
+ 					state->sfp_compat = true;
++				/* trigger a re-select/enable below */
++				state->serdes = !serdes;
++				pdev->state = PHY_RUNNING;
+ 			} else {
+ 				state->sfp_compat = false;
+ 				state->sfp_enabled = false;
++				pdev->state = PHY_NOLINK;
+ 			}
+ 		}
+ 		if (state->sfp_signal != sfp_signal) {
+@@ -510,11 +514,8 @@
+ 			}
+ 		}
+ 
+-		/*
+-		 * if serdes and compatible SFP module and not yet enabled
+-		 * then enable for serdes
+-		 */
+-		if (serdes && state->sfp_compat && state->sfp_signal &&
++		/* if compatible SFP module and not yet enabled then enable */
++		if (state->sfp_compat && state->sfp_signal &&
+ 		    !state->sfp_enabled)
+ 		{
+ 			if (!config_mv88e1111_port_sfp(pdev, port, 1))
 Index: trunk/target/linux/imx6/patches-3.14/0009-ARM-imx-dts-add-GW52xx-can-support.patch
 ===================================================================
 --- trunk/target/linux/imx6/patches-3.14/0009-ARM-imx-dts-add-GW52xx-can-support.patch	(revision 0)
