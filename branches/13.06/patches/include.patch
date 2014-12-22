@@ -1,0 +1,13 @@
+Index: trunk/include/download.mk
+===================================================================
+--- trunk/include/download.mk	(revision 36311)
++++ trunk/include/download.mk	(working copy)
+@@ -45,7 +45,7 @@
+ endef
+ 
+ define wrap_mirror
+-	$(if $(if $(MIRROR),$(filter-out x,$(MIRROR_MD5SUM))),@$(SCRIPT_DIR)/download.pl "$(DL_DIR)" "$(FILE)" "$(MIRROR_MD5SUM)" || ( $(1) ),$(1))
++	$(if $(if $(MIRROR),$(filter-out x,$(MIRROR_MD5SUM))),@$(SCRIPT_DIR)/download.pl "$(DL_DIR)" "$(FILE)" "$(MIRROR_MD5SUM)" || ( $(1) ), ( $(1) ) || $(DownloadMethod/default))
+ endef
+ 
+ define DownloadMethod/cvs
