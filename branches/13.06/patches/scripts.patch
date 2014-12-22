@@ -1,0 +1,12 @@
+Index: trunk/scripts/download.pl
+===================================================================
+--- trunk/scripts/download.pl	(revision 36311)
++++ trunk/scripts/download.pl	(working copy)
+@@ -194,6 +194,7 @@
+ #push @mirrors, 'http://mirror1.openwrt.org';
+ push @mirrors, 'http://mirror2.openwrt.org/sources';
+ push @mirrors, 'http://downloads.openwrt.org/sources';
++push @mirrors, 'http://dev.gateworks.com/sources';
+ 
+ while (!$ok) {
+ 	my $mirror = shift @mirrors;
