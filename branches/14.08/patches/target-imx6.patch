@@ -549,3 +549,23 @@ Index: trunk/target/linux/imx6/patches-3.14/210-ventana-gw551x.patch
 + 	imx6q-phytec-pbab01.dtb \
 + 	imx6q-sabreauto.dtb \
 + 	imx6q-sabrelite.dtb \
+Index: trunk/target/linux/imx6/profiles/120-gateworks.mk
+===================================================================
+--- trunk/target/linux/imx6/profiles/120-gateworks.mk	(revision 42297)
++++ trunk/target/linux/imx6/profiles/120-gateworks.mk	(working copy)
+@@ -41,6 +41,7 @@
+ 	imx6dl-gw52xx \
+ 	imx6dl-gw53xx \
+ 	imx6dl-gw54xx \
++	imx6dl-gw551x \
+ 	imx6dl-gw552x \
+ 	imx6q-gw51xx \
+ 	imx6q-gw52xx \
+@@ -47,6 +48,7 @@
+ 	imx6q-gw53xx \
+ 	imx6q-gw54xx \
+ 	imx6q-gw5400-a \
++	imx6q-gw551x \
+ 	imx6q-gw552x
+ 
+ $(eval $(call Profile,VENTANA))
