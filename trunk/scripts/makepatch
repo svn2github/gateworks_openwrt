@@ -33,17 +33,10 @@ PATCHSETS=" \
 	tools \
 "
 
-# $1 - path
-# use sort on files to maintain file order across various configurations
-do_diff() {
-	svn status $1/ | awk '{print $2}' | sort | \
-		xargs -r svn diff --depth=empty 2>/dev/null
-}
-
 # create patch
 # globals: DIR, PATCHDIR, PATCHSETS 
 create() {
-	local name path d i p
+	local name path files f d i p
 
 	echo "Creating patchset for $DIR:"
 
@@ -76,7 +69,14 @@ create() {
 		paths="$(echo $paths | tr ',' ' ')"
 		rm -f $PATCHDIR/$name.patch
 		for p in $paths; do
-			do_diff $DIR/$p >> $PATCHDIR/$name.patch
+			# loop through files that have changed eliminating dirs
+			files="$(svn status $DIR/$p/ | awk '{print $2}' | sort)"
+			for f in $files; do
+				[ -d "$f" ] && continue
+				#echo "	$f"
+				svn diff "$f" --depth=empty \
+					2>/dev/null 1>>$PATCHDIR/$name.patch
+			done
 			if [ -s $PATCHDIR/$name.patch ]; then
 				svn add $PATCHDIR/$name.patch 2>/dev/null
 				wc=$(svn diff $PATCHDIR/$name.patch | wc | \
@@ -87,7 +87,7 @@ create() {
 				#	echo "$name.patch unchanged"
 				fi
 			else
-				rm $PATCHDIR/$name.patch
+				rm -f $PATCHDIR/$name.patch
 			fi
 		done
 	done
