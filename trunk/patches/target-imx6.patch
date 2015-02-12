@@ -57,6 +57,17 @@ Index: trunk/target/linux/imx6/config-3.14
  CONFIG_USE_OF=y
  CONFIG_VECTORS_BASE=0xffff0000
  CONFIG_VFP=y
+@@ -363,3 +381,10 @@
+ CONFIG_ZLIB_DEFLATE=y
+ CONFIG_ZLIB_INFLATE=y
+ CONFIG_ZONE_DMA_FLAG=0
++CONFIG_MFD_CORE=y
++CONFIG_WATCHDOG_CORE=y
++CONFIG_GSC_CORE=y
++CONFIG_GSC_WATCHDOG=y
++CONFIG_INPUT_GSC=y
++CONFIG_GPIO_PCA953X=y
++CONFIG_GPIO_PCA953X_IRQ=y
 Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6dl-gw551x.dts
 ===================================================================
 --- trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6dl-gw551x.dts	(revision 0)
@@ -85,7 +96,7 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi
 ===================================================================
 --- trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi	(revision 0)
 +++ trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi	(working copy)
-@@ -0,0 +1,337 @@
+@@ -0,0 +1,377 @@
 +/*
 + * Copyright 2014 Gateworks Corporation
 + *
@@ -121,6 +132,20 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi
 +			gpios = <&gpio4 7 1>;
 +			default-state = "on";
 +			linux,default-trigger = "heartbeat";
++		};
++	};
++
++	gpio_keys {
++		compatible = "gpio-keys-polled";
++		poll-interval = <100>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		user_pb {
++			label = "user_pb";
++
++			gpios = <&gsc_gpio 0 1>;
++			linux,code = <256>;
 +		};
 +	};
 +
@@ -194,19 +219,45 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi
 +		pagesize = <16>;
 +	};
 +
-+	gpio: pca9555@23 {
++	gsc: gsc@20 {
++		compatible = "gw,gsc";
++		reg = <0x20>;
++		interrupt-parent = <&gpio1>;
++		interrupts = <4 1>;
++		interrupt-controller;
++		#interrupt-cells = <1>;
++
++		/* GSC watchdog */
++		watchdog {
++			compatible = "gw,gsc_wdt";
++			status = "okay";
++		};
++
++		/* Linux input events from GSC interrupt events */
++		input {
++			compatible = "gw,gsc_input";
++			interrupt-parent = <&gsc>;
++			interrupts = <0 1 2 5 7>;
++			interrupt-names = "button", "key-erased", "eeprom-wp", "tamper", "button-held";
++			status = "okay";
++		};
++	};
++
++	gsc_gpio: pca9555@23 {
 +		compatible = "nxp,pca9555";
 +		reg = <0x23>;
 +		gpio-controller;
 +		#gpio-cells = <2>;
++		interrupt-parent = <&gsc>;
++		interrupts = <4>;
 +	};
 +
-+	hwmon: gsc@29 {
++	gsc_hwmon: hwmon@29 {
 +		compatible = "gw,gsp";
 +		reg = <0x29>;
 +	};
 +
-+	rtc: ds1672@68 {
++	gsc_rtc: ds1672@68 {
 +		compatible = "dallas,ds1672";
 +		reg = <0x68>;
 +	};
@@ -423,6 +474,80 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi
 +&usbh1 {
 +	status = "okay";
 +};
+Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw552x.dtsi
+===================================================================
+--- trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw552x.dtsi	(revision 42297)
++++ trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw552x.dtsi	(working copy)
+@@ -46,6 +46,20 @@
+ 		};
+ 	};
+ 
++	gpio_keys {
++		compatible = "gpio-keys-polled";
++		poll-interval = <100>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		user_pb {
++			label = "user_pb";
++
++			gpios = <&gsc_gpio 0 1>;
++			linux,code = <256>;
++		};
++	};
++
+ 	memory {
+ 		reg = <0x10000000 0x20000000>;
+ 	};
+@@ -120,19 +134,45 @@
+ 		pagesize = <16>;
+ 	};
+ 
+-	gpio: pca9555@23 {
++	gsc: gsc@20 {
++		compatible = "gw,gsc";
++		reg = <0x20>;
++		interrupt-parent = <&gpio1>;
++		interrupts = <4 1>;
++		interrupt-controller;
++		#interrupt-cells = <1>;
++
++		/* GSC watchdog */
++		watchdog {
++			compatible = "gw,gsc_wdt";
++			status = "okay";
++		};
++
++		/* Linux input events from GSC interrupt events */
++		input {
++			compatible = "gw,gsc_input";
++			interrupt-parent = <&gsc>;
++			interrupts = <0 1 2 5 7>;
++			interrupt-names = "button", "key-erased", "eeprom-wp", "tamper", "button-held";
++			status = "okay";
++		};
++	};
++
++	gsc_gpio: pca9555@23 {
+ 		compatible = "nxp,pca9555";
+ 		reg = <0x23>;
+ 		gpio-controller;
+ 		#gpio-cells = <2>;
++		interrupt-parent = <&gsc>;
++		interrupts = <4>;
+ 	};
+ 
+-	hwmon: gsc@29 {
++	gsc_hwmon: hwmon@29 {
+ 		compatible = "gw,gsp";
+ 		reg = <0x29>;
+ 	};
+ 
+-	rtc: ds1672@68 {
++	gsc_rtc: ds1672@68 {
+ 		compatible = "dallas,ds1672";
+ 		reg = <0x68>;
+ 	};
 Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6q-gw551x.dts
 ===================================================================
 --- trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6q-gw551x.dts	(revision 0)
@@ -447,6 +572,174 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6q-gw551x.dts
 +	model = "Gateworks Ventana i.MX6 Dual/Quad GW551X";
 +	compatible = "gw,imx6q-gw551x", "gw,ventana", "fsl,imx6q";
 +};
+Index: trunk/target/linux/imx6/files-3.14/drivers/input/misc/gsc-input.c
+===================================================================
+--- trunk/target/linux/imx6/files-3.14/drivers/input/misc/gsc-input.c	(revision 0)
++++ trunk/target/linux/imx6/files-3.14/drivers/input/misc/gsc-input.c	(working copy)
+@@ -0,0 +1,163 @@
++/*
++ * Copyright (C) 2014 Gateworks Corporation
++ *
++ * Written by Tim Harvey <tharvey@gateworks.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++
++#include <linux/errno.h>
++#include <linux/init.h>
++#include <linux/input.h>
++#include <linux/interrupt.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of_irq.h>
++#include <linux/platform_device.h>
++
++#include <linux/mfd/gsc.h>
++
++#define DRIVER_NAME "gsc_input"
++
++static irqreturn_t gsc_input_irq(int irq, void *data)
++{
++	struct input_dev *input = (struct input_dev *)data;
++	int key;
++	u8 sts;
++	struct irq_desc *desc = irq_to_desc(irq);
++
++	gsc_i2c_read(GSC_IRQ_STATUS, &sts);
++	dev_dbg(&input->dev, "irq%d status=0x%02x\n", irq, sts);
++
++	while (sts) {
++		irq = fls(sts);
++		irq--;
++		sts &= ~BIT(irq);
++
++		switch(irq) {
++		/* user button press and release within 700ms */
++		case GSC_IRQ_PB:
++			key = BTN_0;
++			break;
++		/* user eeprom section has been erased */
++		case GSC_IRQ_KEY_ERASED:
++			key = BTN_1;
++			break;
++		/* user eeprom write-protect violation */
++		case GSC_IRQ_EEPROM_WP:
++			key = BTN_2;
++			break;
++		/* gpio change event */
++		case GSC_IRQ_GPIO:
++			key = BTN_3;
++			break;
++		/* tamper event */
++		case GSC_IRQ_TAMPER:
++			key = BTN_4;
++			break;
++		/* user button held down for more than 700ms */
++		case GSC_IRQ_SWITCH_HOLD:
++			key = BTN_5;
++			break;
++		default:
++			key = 0;
++			break;
++		}
++
++		if (desc->action->name) {
++			dev_dbg(&input->dev, "bit%d: key=0x%03x %s\n", irq,
++				key, desc->action->name);
++			input_report_key(input, key, 1);
++			input_report_key(input, key, 0);
++			input_sync(input);
++		}
++	}
++
++	return IRQ_HANDLED;
++}
++
++static int gsc_input_probe(struct platform_device *pdev)
++{
++	struct input_dev *input;
++	int err, i, irq;
++	struct resource r;
++	u8 reg;
++
++	if (gsc_i2c_read(GSC_CTRL_0, &reg)) {
++		dev_err(&pdev->dev, "failed reading GSC_CTRL_0\n");
++		return -EIO;
++	}
++
++	input = devm_input_allocate_device(&pdev->dev);
++	if (!input) {
++		dev_err(&pdev->dev, "Can't allocate input device\n");
++		return -ENOMEM;
++	}
++
++	input->name = DRIVER_NAME;
++	input->dev.parent = &pdev->dev;
++
++	input_set_capability(input, EV_KEY, BTN_0);
++	input_set_capability(input, EV_KEY, BTN_1);
++	input_set_capability(input, EV_KEY, BTN_2);
++	input_set_capability(input, EV_KEY, BTN_3);
++	input_set_capability(input, EV_KEY, BTN_4);
++	input_set_capability(input, EV_KEY, BTN_5);
++
++	platform_set_drvdata(pdev, input);
++
++	for (i = 0; i < 8; i++) {
++		irq = of_irq_to_resource(pdev->dev.of_node, i, &r);
++		if (!irq)
++			break;
++		err = devm_request_threaded_irq(&pdev->dev, irq, NULL,
++						gsc_input_irq, 0, r.name,
++						input);
++		if (err < 0) {
++			dev_err(&pdev->dev, "failed to claim irq%d: %d\n", irq,
++				err);
++			return err;
++		}
++		dev_dbg(&pdev->dev, "registered irq%d: %s\n", irq, r.name);
++	}
++
++	err = input_register_device(input);
++	if (err) {
++		dev_err(&pdev->dev, "Can't register input device: %d\n", err);
++		return err;
++	}
++
++	dev_info(&pdev->dev, "input driver installed: CTRL_0=0x%02x\n", reg);
++
++	return 0;
++}
++
++static int gsc_input_remove(struct platform_device *pdev)
++{
++	dev_info(&pdev->dev, "input driver removed\n");
++	return 0;
++}
++
++static const struct of_device_id gsc_input_dt_ids[] = {
++	{ .compatible = "gw,gsc_input", },
++	{ }
++};
++
++static struct platform_driver gsc_input_driver = {
++	.probe		= gsc_input_probe,
++	.remove		= gsc_input_remove,
++	.driver		= {
++		.name	= DRIVER_NAME,
++		.owner	= THIS_MODULE,
++		.of_match_table = gsc_input_dt_ids,
++	},
++};
++
++module_platform_driver(gsc_input_driver);
++
++MODULE_AUTHOR("Tim Harvey <tharvey@gateworks.com>");
++MODULE_DESCRIPTION("Input driver for GSC");
++MODULE_LICENSE("GPL v2");
++MODULE_ALIAS("platform:" DRIVER_NAME);
 Index: trunk/target/linux/imx6/files-3.14/drivers/input/misc/mma8451.c
 ===================================================================
 --- trunk/target/linux/imx6/files-3.14/drivers/input/misc/mma8451.c	(revision 0)
@@ -1171,6 +1464,602 @@ Index: trunk/target/linux/imx6/files-3.14/drivers/input/misc/mma8451.c
 +
 +module_init(mma8451_init);
 +module_exit(mma8451_exit);
+Index: trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.c
+===================================================================
+--- trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.c	(revision 0)
++++ trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.c	(working copy)
+@@ -0,0 +1,445 @@
++/*
++ * Copyright (C) 2014 Gateworks Corporation
++ *
++ * Written by Tim Harvey <tharvey@gateworks.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++
++#include <linux/delay.h>
++#include <linux/err.h>
++#include <linux/gpio.h>
++#include <linux/i2c.h>
++#include <linux/init.h>
++#include <linux/interrupt.h>
++#include <linux/mfd/core.h>
++#include <linux/mfd/gsc.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/platform_device.h>
++
++#include "gsc-core.h"
++
++#define I2C_RETRIES	3
++
++/*
++ * The Gateworks System Controller (GSC) is a family of a multi-function
++ * "Power Management and System Companion Device" chips originally designed for
++ * use in Gateworks Single Board Computers. The control interface is I2C,
++ * at 100kbps, with an interrupt.
++ *
++ * This driver core provides genirq support for the interrupts emitted,
++ * by the various modules, and exports register access primitives.
++ *
++ */
++
++#define DRIVER_NAME			"gsc"
++
++/*----------------------------------------------------------------------*/
++
++struct gsc {
++	struct i2c_client *client;
++	struct device *dev;
++	unsigned int fwver;
++	unsigned short fwcrc;
++	unsigned char ready;
++	struct mutex io_lock;
++	struct platform_device *gsc;
++	struct platform_device *wdt;
++	struct platform_device *input;
++};
++
++static struct gsc *gsc_priv;
++
++/**
++ * gsc_i2c_write - Writes a register to GSC
++ * @reg: register address
++ * @val: value to write
++ *
++ * Returns the result of operation - 0 is success
++ */
++int __gsc_i2c_write(u8 reg, u8 val)
++{
++	int retry, ret = -EAGAIN;
++
++	for (retry = 0; ret == -EAGAIN && retry < I2C_RETRIES; retry++)
++		ret = i2c_smbus_write_byte_data(gsc_priv->client, reg, val);
++	if (ret < 0) {
++		dev_err(&gsc_priv->client->dev, ">> 0x%02x %d\n", reg, ret);
++		return ret;
++	}
++	dev_dbg(&gsc_priv->client->dev, ">> 0x%02x=0x%02x (%d)\n", reg,
++		val, retry);
++
++	return 0;
++}
++
++/**
++ * gsc_i2c_read - Reads register from GSC
++ * @reg: register address
++ * @val: value to write
++ *
++ * Returns result of operation
++ */
++static int __gsc_i2c_read(u8 reg, u8 *val)
++{
++	int retry, ret = -EAGAIN;
++
++	for (retry = 0; ret == -EAGAIN && retry < I2C_RETRIES; retry++)
++		ret = i2c_smbus_read_byte_data(gsc_priv->client, reg);
++	if (ret < 0) {
++		dev_err(&gsc_priv->client->dev, "<< 0x%02x %d\n", reg, ret);
++		return ret;
++	}
++
++	*val = ret & 0xff;
++	dev_dbg(&gsc_priv->client->dev, "<< 0x%02x=0x%02x (%d)\n", reg,
++		*val, retry);
++
++	return 0;
++}
++
++/**
++ * gsc_i2c_update - set bits
++ * @reg: register address
++ * @mask: bits to clear
++ * @set; bits to set
++ *
++ * Returns result of operation
++ */
++static int __gsc_i2c_update(u8 reg, u8 mask, u8 set)
++{
++	u8 rval;
++	int ret;
++
++	ret = __gsc_i2c_read(reg, &rval);
++	if (ret)
++		return ret;
++	rval &= ~mask;
++	ret = __gsc_i2c_write(reg, rval | set);
++	return ret;
++}
++
++/* Exported Functions */
++
++/**
++ * gsc_i2c_write - Writes a register to GSC
++ * @reg: register address
++ * @val: value to write
++ *
++ * Returns the result of operation - 0 is success
++ */
++int gsc_i2c_write(u8 reg, u8 val)
++{
++	struct device *dev = &gsc_priv->client->dev;
++	int ret = 0;
++
++	if (unlikely(!gsc_priv || !gsc_priv->ready)) {
++		pr_err("%s: not initialized\n", DRIVER_NAME);
++		return -EPERM;
++	}
++
++	mutex_lock(&gsc_priv->io_lock);
++	ret = __gsc_i2c_write(reg, val);
++	if (ret < 0)
++		dev_err(dev, ">> 0x%02x %d\n", reg, ret);
++	else
++		dev_dbg(dev, ">> 0x%02x=0x%02x\n", reg, val);
++	mutex_unlock(&gsc_priv->io_lock);
++
++	return ret;
++}
++EXPORT_SYMBOL(gsc_i2c_write);
++
++/**
++ * gsc_i2c_read - Reads register from GSC
++ * @reg: register address
++ * @val: value to write
++ *
++ * Returns result of operation
++ */
++int gsc_i2c_read(u8 reg, u8 *val)
++{
++	struct device *dev = &gsc_priv->client->dev;
++	int ret = 0;
++
++	if (unlikely(!gsc_priv || !gsc_priv->ready)) {
++		pr_err("%s: not initialized\n", DRIVER_NAME);
++		return -EPERM;
++	}
++
++	mutex_lock(&gsc_priv->io_lock);
++	ret = __gsc_i2c_read(reg, val);
++	if (ret < 0)
++		dev_err(dev, "<< 0x%02x %d\n", reg, ret);
++	else
++		dev_dbg(dev, "<< 0x%02x=0x%02x\n", reg, *val);
++	mutex_unlock(&gsc_priv->io_lock);
++
++	return ret;
++}
++EXPORT_SYMBOL(gsc_i2c_read);
++
++/**
++ * gsc_i2c_update - read/write register from GSC
++ * @reg: register address
++ * @mask: bits to clear
++ * @val: bits to set
++ *
++ * Returns result of operation
++ */
++int gsc_i2c_update(u8 reg, u8 mask, u8 val)
++{
++	int ret = 0;
++
++	if (unlikely(!gsc_priv || !gsc_priv->ready)) {
++		pr_err("%s: not initialized\n", DRIVER_NAME);
++		return -EPERM;
++	}
++
++	mutex_lock(&gsc_priv->io_lock);
++	ret = __gsc_i2c_update(reg, mask, val);
++	mutex_unlock(&gsc_priv->io_lock);
++
++	return ret;
++}
++EXPORT_SYMBOL(gsc_i2c_update);
++
++/*----------------------------------------------------------------------*/
++
++/**
++ * gsc_get_fwver - API to get GSC FW version.
++ */
++int gsc_get_fwver(void)
++{
++	if (unlikely(!gsc_priv || !gsc_priv->ready)) {
++		pr_err("%s: not initialized\n", DRIVER_NAME);
++		return -EPERM;
++	}
++
++	return gsc_priv->fwver;
++}
++EXPORT_SYMBOL_GPL(gsc_get_fwver);
++
++/*
++ * gsc_powerdown - API to use GSC to power down board for a specific time
++ *
++ * secs - number of seconds to remain powered off
++ */
++int gsc_powerdown(unsigned long secs)
++{
++	int ret;
++
++	if (!gsc_priv)
++		return -ENODEV;
++
++	dev_info(&gsc_priv->client->dev, "GSC powerdown for %ld seconds\n",
++		 secs);
++	mutex_lock(&gsc_priv->io_lock);
++	ret = __gsc_i2c_write(GSC_TIME_ADD + 0, secs & 0xff);
++	if (ret)
++		goto done;
++	ret = __gsc_i2c_write(GSC_TIME_ADD + 1, (secs >> 8) & 0xff);
++	if (ret)
++		goto done;
++	ret = __gsc_i2c_write(GSC_TIME_ADD + 2, (secs >> 16) & 0xff);
++	if (ret)
++		goto done;
++	ret = __gsc_i2c_write(GSC_TIME_ADD + 3, (secs >> 24) & 0xff);
++	if (ret)
++		goto done;
++	ret = __gsc_i2c_update(GSC_CTRL_1, 0, 1 << GSC_CTRL_1_LATCH_SLEEP_ADD);
++	if (ret)
++		goto done;
++	ret = __gsc_i2c_update(GSC_CTRL_1, 0, 1 << GSC_CTRL_1_ACTIVATE_SLEEP |
++			       1 << GSC_CTRL_1_SLEEP_ENABLE);
++	if (ret)
++		goto done;
++
++	ret = 0;
++
++done:
++	mutex_unlock(&gsc_priv->io_lock);
++
++	return ret;
++}
++
++/*----------------------------------------------------------------------*/
++
++
++/*
++ * sysfs hooks
++ */
++static ssize_t gsc_show(struct device *dev, struct device_attribute *attr,
++			char *buf)
++{
++	struct gsc *gsc = dev_get_drvdata(dev);
++	const char *name = attr->attr.name;
++	int rz = 0;
++
++	if (strcasecmp(name, "fw_version") == 0)
++		rz = sprintf(buf, "%d\n", gsc->fwver);
++	else if (strcasecmp(name, "fw_crc") == 0)
++		rz = sprintf(buf, "0x%04x\n", gsc->fwcrc);
++
++	return rz;
++}
++
++static ssize_t gsc_store(struct device *dev, struct device_attribute *attr,
++			 const char *buf, size_t count)
++{
++	const char *name = attr->attr.name;
++	int ret;
++
++	if (strcasecmp(name, "powerdown") == 0) {
++		long value;
++
++		ret = strict_strtol(buf, 0, &value);
++		if (ret == 0)
++			gsc_powerdown(value);
++	} else
++		printk(KERN_ERR "invalid name '%s\n", name);
++
++	return count;
++}
++
++
++/*
++ * Create a group of attributes so that we can create and destroy them all
++ * at once.
++ */
++static struct device_attribute attr_fwver =
++	__ATTR(fw_version, 0440, gsc_show, NULL);
++static struct device_attribute attr_fwcrc =
++	__ATTR(fw_crc, 0440, gsc_show, NULL);
++static struct device_attribute attr_pwrdown =
++	__ATTR(powerdown, 0220, NULL, gsc_store);
++
++static struct attribute *gsc_attrs[] = {
++	&attr_fwver.attr,
++	&attr_fwcrc.attr,
++	&attr_pwrdown.attr,
++	NULL,
++};
++
++static struct attribute_group attr_group = {
++	.attrs = gsc_attrs,
++};
++
++static int
++gsc_probe(struct i2c_client *client, const struct i2c_device_id *id)
++{
++	struct device *dev = &client->dev;
++	struct gsc *gsc;
++	int ret, irq_base = 0;
++	u8 reg;
++
++	if (client->irq <= 0) {
++		dev_err(dev, "%s: no irq specified\n", DRIVER_NAME);
++		return -EINVAL;
++	}
++	if (gsc_priv) {
++		dev_err(dev, "already initialized\n");
++		return -EBUSY;
++	}
++
++	if (i2c_check_functionality(client->adapter, I2C_FUNC_I2C) == 0) {
++		dev_dbg(dev, "can't talk I2C?\n");
++		return -EIO;
++	}
++
++
++	gsc = devm_kzalloc(dev, sizeof(struct gsc), GFP_KERNEL);
++	if (!gsc)
++		ret = -ENOMEM;
++	gsc_priv = gsc;
++
++	mutex_init(&gsc->io_lock);
++	gsc->client = client;
++
++	if (__gsc_i2c_read(GSC_FW_VER, &reg))
++		return -EIO;
++	gsc->fwver = reg;
++	__gsc_i2c_read(GSC_FW_CRC, &reg);
++	gsc->fwcrc = reg << 8;
++	__gsc_i2c_read(GSC_FW_CRC+1, &reg);
++	gsc->fwcrc |= reg;
++	gsc->ready = true;
++
++	irq_base = gsc_irq_init(&client->dev, client->irq);
++	if (irq_base < 0)
++		return irq_base;
++	dev_info(dev, "Gateworks System Controller: fw v%02d crc=0x%04x irq%d\n",
++		 gsc->fwver, gsc->fwcrc, client->irq);
++
++	i2c_set_clientdata(client, gsc);
++	gsc->dev = &client->dev;
++
++	ret = sysfs_create_group(&client->dev.kobj, &attr_group);
++	if (ret)
++		dev_err(dev, "failed to create sysfs attrs\n");
++
++	if (client->dev.of_node) {
++		printk("Populating platform devices\n");
++		ret = of_platform_populate(client->dev.of_node, NULL, NULL,
++					   &client->dev);
++	}
++
++	return ret;
++}
++
++static int gsc_remove(struct i2c_client *client)
++{
++	struct gsc *gsc = i2c_get_clientdata(client);
++
++	sysfs_remove_group(&client->dev.kobj, &attr_group);
++	mfd_remove_devices(gsc->dev);
++	gsc_priv = NULL;
++
++	return 0;
++}
++
++static const struct i2c_device_id gsc_i2c_ids[] = {
++	{ "gsc", 0 },
++	{ },
++};
++MODULE_DEVICE_TABLE(i2c, gsc_i2c_ids);
++
++static const struct of_device_id gsc_dt_ids[] = {
++	{ .compatible = "gw,gsc", },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, gsc_dt_ids);
++
++static struct i2c_driver gsc_driver = {
++	.driver = {
++		.name	= DRIVER_NAME,
++		.of_match_table = gsc_dt_ids,
++	},
++	.probe		= gsc_probe,
++	.remove		= gsc_remove,
++	.id_table	= gsc_i2c_ids,
++};
++
++static int __init gsc_init(void)
++{
++        return i2c_add_driver(&gsc_driver);
++}
++/* register after i2c postcore initcall and before
++ * subsys initcalls that may rely on these GPIOs
++ */
++subsys_initcall(gsc_init);
++
++static void __exit gsc_exit(void)
++{
++        i2c_del_driver(&gsc_driver);
++}
++module_exit(gsc_exit);
++
++MODULE_AUTHOR("Tim Harvey <tharvey@gateworks.com>");
++MODULE_DESCRIPTION("I2C Core interface for GSC");
++MODULE_LICENSE("GPL v2");
+Index: trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.h
+===================================================================
+--- trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.h	(revision 0)
++++ trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.h	(working copy)
+@@ -0,0 +1,7 @@
++#ifndef __GSC_CORE_H_
++#define __GSC_CORE_H_
++
++extern int gsc_irq_init(struct device *dev, int irq_num);
++extern int gsc_irq_exit(void);
++
++#endif /* __GSC_CORE_H_ */
+Index: trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-irq.c
+===================================================================
+--- trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-irq.c	(revision 0)
++++ trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-irq.c	(working copy)
+@@ -0,0 +1,129 @@
++/*
++ * Copyright (C) 2014 Gateworks Corporation
++ *
++ * Written by Tim Harvey <tharvey@gateworks.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++
++#include <linux/device.h>
++#include <linux/delay.h>
++#include <linux/input.h>
++#include <linux/interrupt.h>
++#include <linux/irq.h>
++#include <linux/irqdomain.h>
++#include <linux/module.h>
++#include <linux/slab.h>
++
++#include <linux/mfd/gsc.h>
++
++struct gsc_agent {
++	int irq_base;
++	int irq_num;
++};
++
++static struct gsc_agent *gsc_agent;
++
++static struct irq_chip gsc_irq_chip = {
++	.name		= "gsc",
++	.flags		= IRQCHIP_SKIP_SET_WAKE,
++};
++
++static irqreturn_t gsc_irq(int irq, void *data)
++{
++	struct gsc_agent *agent = data;
++	u8 sts;
++
++	gsc_i2c_read(GSC_IRQ_STATUS, &sts);
++	pr_debug("gsc: irq%d status=0x%02x\n", irq, sts);
++
++	while (sts) {
++		irq = fls(sts);
++		irq--;
++		sts &= ~BIT(irq);
++
++		handle_nested_irq(agent->irq_base + irq);
++	}
++
++	/* clear all status bits */
++	gsc_i2c_write(GSC_IRQ_STATUS, 0);
++
++	return IRQ_HANDLED;
++}
++
++int gsc_irq_init(struct device *dev, int irq_num)
++{
++	static struct irq_chip gsc_mod_irq_chip;
++	int ret, i;
++	int irq_base, irq_end, nr_irqs;
++	struct device_node *node = dev->of_node;
++	struct gsc_agent *agent;
++	u8 reg;
++
++	agent = devm_kzalloc(dev, sizeof *agent, GFP_KERNEL);
++	if (!agent)
++		return -ENOMEM;
++
++	nr_irqs = 8;
++
++	/* allocate 8 virq's for GSC status register bits */
++	irq_base = irq_alloc_descs(-1, 0, nr_irqs, 0);
++	if (irq_base< 0)
++		return irq_base;
++
++	irq_domain_add_legacy(node, nr_irqs, irq_base, 0,
++			      &irq_domain_simple_ops, NULL);
++	irq_end = irq_base + nr_irqs;
++
++	/* clear all GSC interrupts */
++	ret = gsc_i2c_read(GSC_IRQ_ENABLE, &reg);
++	if (ret < 0) {
++		dev_err(dev, "failed reading GSC_IRQ_ENABLE\n");
++		return ret;
++	}
++	if (reg == 0)
++		dev_warn(dev, "no GSC interrupts enabled\n");
++	gsc_i2c_write(GSC_IRQ_STATUS, 0);
++
++	/* install irq handler for each module */
++	gsc_mod_irq_chip = dummy_irq_chip;
++	gsc_mod_irq_chip.name = "gsc";
++
++	gsc_irq_chip.irq_ack = dummy_irq_chip.irq_ack;
++	agent->irq_base = irq_base;
++
++	for (i = irq_base; i < irq_end; i++) {
++		irq_set_chip_data(i, agent);
++		irq_set_chip_and_handler(i, &gsc_mod_irq_chip,
++					 handle_simple_irq);
++		irq_set_nested_thread(i, 1);
++	}
++	gsc_i2c_write(GSC_IRQ_ENABLE, reg);
++
++	/* install irq handler to demux the GSC IRQ */
++	ret = devm_request_threaded_irq(dev, irq_num, NULL, gsc_irq,
++					IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
++					"gsc", agent);
++	if (ret < 0) {
++		dev_err(dev, "could not claim irq%d: %d\n", irq_num, ret);
++		goto fail_reqirq;
++	}
++	enable_irq_wake(irq_num);
++	gsc_agent = agent;
++	gsc_agent->irq_num = irq_num;
++
++	return irq_base;
++
++fail_reqirq:
++	irq_free_descs(irq_base, nr_irqs);
++
++	return ret;
++}
++
++int gsc_irq_exit(void)
++{
++	irq_free_descs(gsc_agent->irq_base, nr_irqs);
++	return 0;
++}
 Index: trunk/target/linux/imx6/files-3.14/drivers/net/phy/gw16083.c
 ===================================================================
 --- trunk/target/linux/imx6/files-3.14/drivers/net/phy/gw16083.c	(revision 42297)
@@ -1203,6 +2092,259 @@ Index: trunk/target/linux/imx6/files-3.14/drivers/net/phy/gw16083.c
  		    !state->sfp_enabled)
  		{
  			if (!config_mv88e1111_port_sfp(pdev, port, 1))
+Index: trunk/target/linux/imx6/files-3.14/drivers/watchdog/gsc_wdt.c
+===================================================================
+--- trunk/target/linux/imx6/files-3.14/drivers/watchdog/gsc_wdt.c	(revision 0)
++++ trunk/target/linux/imx6/files-3.14/drivers/watchdog/gsc_wdt.c	(working copy)
+@@ -0,0 +1,178 @@
++/*
++ * Copyright (C) 2014 Gateworks Corporation
++ *
++ * Written by Tim Harvey <tharvey@gateworks.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/types.h>
++#include <linux/slab.h>
++#include <linux/watchdog.h>
++
++#include <linux/mfd/gsc.h>
++
++static bool nowayout = WATCHDOG_NOWAYOUT;
++module_param(nowayout, bool, 0);
++MODULE_PARM_DESC(nowayout, "Watchdog cannot be stopped once started "
++        "(default=" __MODULE_STRING(WATCHDOG_NOWAYOUT) ")");
++
++static int gsc_wdt_start(struct watchdog_device *wdt)
++{
++	u8 reg = (1 << GSC_CTRL_1_WDT_ENABLE);
++
++	dev_dbg(wdt->dev, "%s timeout=%d\n", __func__, wdt->timeout);
++
++	return gsc_i2c_update(GSC_CTRL_1, reg, reg);
++}
++
++static int gsc_wdt_stop(struct watchdog_device *wdt)
++{
++	u8 reg = (1 << GSC_CTRL_1_WDT_ENABLE);
++
++	dev_dbg(wdt->dev, "%s\n", __func__);
++
++	return gsc_i2c_update(GSC_CTRL_1, reg, 0);
++}
++
++static int gsc_wdt_set_timeout(struct watchdog_device *wdt,
++			       unsigned int timeout)
++{
++	u8 long_sel = 0;
++
++	dev_dbg(wdt->dev, "%s: %d\n", __func__, timeout);
++
++	switch (timeout) {
++	case 60:
++		long_sel = (1 << GSC_CTRL_1_WDT_TIME);
++	case 30:
++		gsc_i2c_update(GSC_CTRL_1,
++			       (1 << GSC_CTRL_1_WDT_TIME),
++			       (long_sel << GSC_CTRL_1_WDT_TIME));
++		wdt->timeout = timeout;
++		return 0;
++	}
++
++	return -EINVAL;
++}
++
++static const struct watchdog_info gsc_wdt_info = {
++	.options = WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING,
++	.identity = "GSC Watchdog"
++};
++
++static const struct watchdog_ops gsc_wdt_ops = {
++	.owner		= THIS_MODULE,
++	.start		= gsc_wdt_start,
++	.stop		= gsc_wdt_stop,
++	.set_timeout	= gsc_wdt_set_timeout,
++};
++
++static int gsc_wdt_probe(struct platform_device *pdev)
++{
++	int ret = 0;
++	struct watchdog_device *wdt;
++	u8 reg;
++
++	if (gsc_get_fwver() < 44) {
++		dev_err(&pdev->dev, "firmware v44 or newer required "
++			"for watchdog functionality\n");
++		return -EINVAL;
++	}
++
++	/* ensure WD bit enabled */
++	if (gsc_i2c_read(GSC_CTRL_1, &reg)) {
++		dev_err(&pdev->dev, "failed reading GSC_CTRL_1\n");
++		return -EIO;
++	}
++	if (!(reg & (1 << GSC_CTRL_1_WDT_ENABLE))) {
++		dev_err(&pdev->dev, "GSC WDT_ENABLE not enabled"
++			" - must be manually enabled\n");
++		return -EINVAL;
++	}
++
++	wdt = devm_kzalloc(&pdev->dev, sizeof(*wdt), GFP_KERNEL);
++	if (!wdt)
++		return -ENOMEM;
++
++	wdt->info		= &gsc_wdt_info;
++	wdt->ops		= &gsc_wdt_ops;
++	wdt->status		= 0;
++	wdt->timeout		= 30;
++	wdt->min_timeout	= 30;
++	wdt->max_timeout	= 60;
++
++	watchdog_set_nowayout(wdt, nowayout);
++	platform_set_drvdata(pdev, wdt);
++
++	ret = watchdog_register_device(wdt);
++	if (ret) {
++		platform_set_drvdata(pdev, NULL);
++		return ret;
++	}
++	dev_info(&pdev->dev, "registerted watchdog (nowayout=%d)\n",
++		 nowayout);
++
++	return 0;
++}
++
++static int gsc_wdt_remove(struct platform_device *pdev)
++{
++	struct watchdog_device *wdt = platform_get_drvdata(pdev);
++
++	watchdog_unregister_device(wdt);
++	platform_set_drvdata(pdev, NULL);
++
++	return 0;
++}
++
++#ifdef CONFIG_PM
++static int gsc_wdt_suspend(struct platform_device *pdev, pm_message_t state)
++{
++	struct watchdog_device *wdt = platform_get_drvdata(pdev);
++	if (watchdog_active(wdt))
++		return gsc_wdt_stop(wdt);
++
++	return 0;
++}
++
++static int gsc_wdt_resume(struct platform_device *pdev)
++{
++	struct watchdog_device *wdt = platform_get_drvdata(pdev);
++	if (watchdog_active(wdt))
++		return gsc_wdt_start(wdt);
++
++	return 0;
++}
++#else
++#define gsc_wdt_suspend        NULL
++#define gsc_wdt_resume         NULL
++#endif
++
++static const struct of_device_id gsc_wdt_dt_ids[] = {
++	{ .compatible = "gw,gsc_wdt", },
++	{ /* sentinel */ }
++};
++
++static struct platform_driver gsc_wdt_driver = {
++	.probe		= gsc_wdt_probe,
++	.remove		= gsc_wdt_remove,
++	.suspend	= gsc_wdt_suspend,
++	.resume		= gsc_wdt_resume,
++	.driver		= {
++		.owner	= THIS_MODULE,
++		.name	= "gsc_wdt",
++		.of_match_table = gsc_wdt_dt_ids,
++	},
++};
++
++module_platform_driver(gsc_wdt_driver);
++
++MODULE_AUTHOR("Tim Harvey <tharvey@gateworks.com>");
++MODULE_DESCRIPTION("Watchdog driver for GSC");
++MODULE_LICENSE("GPL v2");
++MODULE_ALIAS("platform:gsc_wdt");
+Index: trunk/target/linux/imx6/files-3.14/include/linux/mfd/gsc.h
+===================================================================
+--- trunk/target/linux/imx6/files-3.14/include/linux/mfd/gsc.h	(revision 0)
++++ trunk/target/linux/imx6/files-3.14/include/linux/mfd/gsc.h	(working copy)
+@@ -0,0 +1,65 @@
++/*
++ * Copyright (C) 2014 Gateworks Corporation
++ *
++ * Written by Tim Harvey <tharvey@gateworks.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++
++#ifndef __GSC_H_
++#define __GSC_H_
++
++struct gsc_platform_data {
++	struct pca953x_platform_data *pca953x_data;
++};
++
++/* Register offsets */
++#define GSC_CTRL_0	0x00
++#define GSC_CTRL_1	0x01
++#define GSC_TIME	0x02
++#define GSC_TIME_ADD	0x06
++#define GSC_IRQ_STATUS	0x0A
++#define GSC_IRQ_ENABLE	0x0B
++#define GSC_FW_CRC	0x0C
++#define GSC_FW_VER	0x0E
++#define GSC_WP		0x0F
++
++/* Bit definitions */
++#define GSC_CTRL_0_PB_HARD_RESET	0
++#define GSC_CTRL_0_PB_CLEAR_SECURE_KEY	1
++#define GSC_CTRL_0_PB_SOFT_POWER_DOWN	2
++#define GSC_CTRL_0_PB_BOOT_ALTERNATE	3
++#define GSC_CTRL_0_PERFORM_CRC		4
++#define GSC_CTRL_0_TAMPER_DETECT	5
++#define GSC_CTRL_0_SWITCH_HOLD		6
++
++#define GSC_CTRL_1_SLEEP_ENABLE		0
++#define GSC_CTRL_1_ACTIVATE_SLEEP	1
++#define GSC_CTRL_1_LATCH_SLEEP_ADD	2
++#define GSC_CTRL_1_SLEEP_NOWAKEPB	3
++#define GSC_CTRL_1_WDT_TIME		4
++#define GSC_CTRL_1_WDT_ENABLE		5
++#define GSC_CTRL_1_SWITCH_BOOT_ENABLE	6
++#define GSC_CTRL_1_SWITCH_BOOT_CLEAR	7
++
++#define GSC_IRQ_PB			0
++#define GSC_IRQ_KEY_ERASED		1
++#define GSC_IRQ_EEPROM_WP		2
++#define GSC_IRQ_GPIO			4
++#define GSC_IRQ_TAMPER			5
++#define GSC_IRQ_ALT_BOOT		6
++#define GSC_IRQ_SWITCH_HOLD		7
++
++/*
++ * Read and write single 8-bit registers
++ */
++int gsc_i2c_write(u8 reg, u8 val);
++int gsc_i2c_read(u8 reg, u8 *val);
++int gsc_i2c_update(u8 reg, u8 valmask, u8 val);
++
++int gsc_get_fwver(void);
++int gsc_powerdown(unsigned long seconds);
++
++#endif
 Index: trunk/target/linux/imx6/patches-3.14/0009-ARM-imx-dts-add-GW52xx-can-support.patch
 ===================================================================
 --- trunk/target/linux/imx6/patches-3.14/0009-ARM-imx-dts-add-GW52xx-can-support.patch	(revision 0)
@@ -1341,6 +2483,418 @@ Index: trunk/target/linux/imx6/patches-3.14/215-input-add-driver-mma8451.patch
 + config INPUT_MPU3050
 + 	tristate "MPU3050 Triaxial gyroscope sensor"
 + 	depends on I2C
+Index: trunk/target/linux/imx6/patches-3.14/220-ventana-gsc-core.patch
+===================================================================
+--- trunk/target/linux/imx6/patches-3.14/220-ventana-gsc-core.patch	(revision 0)
++++ trunk/target/linux/imx6/patches-3.14/220-ventana-gsc-core.patch	(working copy)
+@@ -0,0 +1,34 @@
++--- a/drivers/mfd/Kconfig
+++++ b/drivers/mfd/Kconfig
++@@ -189,6 +189,20 @@ config MFD_MC13XXX_I2C
++ 	help
++ 	  Select this if your MC13xxx is connected via an I2C bus.
++ 
+++config GSC_CORE
+++	tristate "Gateworks System Controller Support"
+++	depends on I2C
+++	select MFD_CORE
+++	select GENERIC_IRQ_CHIP
+++	select IRQ_DOMAIN
+++	help
+++	  Say yes here for support of Gateworks System Controller. This is a
+++	  system management IC. This driver provides support for accessing
+++	  various features of the device.
+++
+++	  This driver can be built as a module. If built as a module it will
+++	  be called "gsc"
+++
++ config HTC_EGPIO
++ 	bool "HTC EGPIO support"
++ 	depends on GPIOLIB && ARM
++--- a/drivers/mfd/Makefile
+++++ b/drivers/mfd/Makefile
++@@ -15,6 +15,8 @@ obj-$(CONFIG_MFD_CROS_EC_SPI)	+= cros_ec
++ rtsx_pci-objs			:= rtsx_pcr.o rts5209.o rts5229.o rtl8411.o rts5227.o rts5249.o
++ obj-$(CONFIG_MFD_RTSX_PCI)	+= rtsx_pci.o
++ 
+++gsc-objs			:= gsc-core.o gsc-irq.o
+++obj-$(CONFIG_GSC_CORE)		+= gsc.o
++ obj-$(CONFIG_HTC_EGPIO)		+= htc-egpio.o
++ obj-$(CONFIG_HTC_PASIC3)	+= htc-pasic3.o
++ obj-$(CONFIG_HTC_I2CPLD)	+= htc-i2cpld.o
+Index: trunk/target/linux/imx6/patches-3.14/221-ventana-gsc-watchdog.patch
+===================================================================
+--- trunk/target/linux/imx6/patches-3.14/221-ventana-gsc-watchdog.patch	(revision 0)
++++ trunk/target/linux/imx6/patches-3.14/221-ventana-gsc-watchdog.patch	(working copy)
+@@ -0,0 +1,27 @@
++--- a/drivers/watchdog/Kconfig
+++++ b/drivers/watchdog/Kconfig
++@@ -321,6 +321,14 @@ config COH901327_WATCHDOG
++ 	  This watchdog is used to reset the system and thus cannot be
++ 	  compiled as a module.
++ 
+++config GSC_WATCHDOG
+++	tristate "Gateworks System Controller Watchdog"
+++	depends on GSC_CORE
+++	select WATCHDOG_CORE
+++	help
+++	  Support for Gateworks System Controller watchdog.
+++	  Say 'Y' here to enable the watchdog timer support for GSC chips.
+++
++ config TWL4030_WATCHDOG
++ 	tristate "TWL4030 Watchdog"
++ 	depends on TWL4030_CORE
++--- a/drivers/watchdog/Makefile
+++++ b/drivers/watchdog/Makefile
++@@ -33,6 +33,7 @@ obj-$(CONFIG_ARM_SP805_WATCHDOG) += sp80
++ obj-$(CONFIG_AT91RM9200_WATCHDOG) += at91rm9200_wdt.o
++ obj-$(CONFIG_AT91SAM9X_WATCHDOG) += at91sam9_wdt.o
++ obj-$(CONFIG_OMAP_WATCHDOG) += omap_wdt.o
+++obj-$(CONFIG_GSC_WATCHDOG) += gsc_wdt.o
++ obj-$(CONFIG_TWL4030_WATCHDOG) += twl4030_wdt.o
++ obj-$(CONFIG_21285_WATCHDOG) += wdt285.o
++ obj-$(CONFIG_977_WATCHDOG) += wdt977.o
+Index: trunk/target/linux/imx6/patches-3.14/222-ventana-gsc-input.patch
+===================================================================
+--- trunk/target/linux/imx6/patches-3.14/222-ventana-gsc-input.patch	(revision 0)
++++ trunk/target/linux/imx6/patches-3.14/222-ventana-gsc-input.patch	(working copy)
+@@ -0,0 +1,30 @@
++--- a/drivers/input/misc/Kconfig
+++++ b/drivers/input/misc/Kconfig
++@@ -93,6 +93,17 @@ config INPUT_BMA150
++ 	  To compile this driver as a module, choose M here: the
++ 	  module will be called bma150.
++ 
+++config INPUT_GSC
+++	tristate "Gateworks System Controller Input support"
+++	depends on GSC_CORE
+++	help
+++	Support for Gateworks System Controller input device.
+++	  Say Y here if you want to enable Linux input device support for
+++	  GSC user-pushbutton, and tamper events.
+++
+++	  To compile this driver as a module, choose M here. The module will
+++	  be called gsc_input.
+++
++ config INPUT_PCSPKR
++ 	tristate "PC Speaker support"
++ 	depends on PCSPKR_PLATFORM
++--- a/drivers/input/misc/Makefile
+++++ b/drivers/input/misc/Makefile
++@@ -44,6 +44,7 @@ obj-$(CONFIG_INPUT_MPU3050)		+= mpu3050.
++ obj-$(CONFIG_INPUT_PCAP)		+= pcap_keys.o
++ obj-$(CONFIG_INPUT_PCF50633_PMU)	+= pcf50633-input.o
++ obj-$(CONFIG_INPUT_PCF8574)		+= pcf8574_keypad.o
+++obj-$(CONFIG_INPUT_GSC)			+= gsc-input.o
++ obj-$(CONFIG_INPUT_PCSPKR)		+= pcspkr.o
++ obj-$(CONFIG_INPUT_PM8XXX_VIBRATOR)	+= pm8xxx-vibrator.o
++ obj-$(CONFIG_INPUT_PMIC8XXX_PWRKEY)	+= pmic8xxx-pwrkey.o
+Index: trunk/target/linux/imx6/patches-3.14/223-ventana-enable-gsc-drivers.patch
+===================================================================
+--- trunk/target/linux/imx6/patches-3.14/223-ventana-enable-gsc-drivers.patch	(revision 0)
++++ trunk/target/linux/imx6/patches-3.14/223-ventana-enable-gsc-drivers.patch	(working copy)
+@@ -0,0 +1,204 @@
++--- a/arch/arm/boot/dts/imx6qdl-gw51xx.dtsi
+++++ b/arch/arm/boot/dts/imx6qdl-gw51xx.dtsi
++@@ -131,19 +131,45 @@
++ 		pagesize = <16>;
++ 	};
++ 
++-	gpio: pca9555@23 {
+++	gsc: gsc@20 {
+++		compatible = "gw,gsc";
+++		reg = <0x20>;
+++		interrupt-parent = <&gpio1>;
+++		interrupts = <4 1>;
+++		interrupt-controller;
+++		#interrupt-cells = <1>;
+++
+++		/* GSC watchdog */
+++		watchdog {
+++			compatible = "gw,gsc_wdt";
+++			status = "okay";
+++		};
+++
+++		/* Linux input events from GSC interrupt events */
+++		input {
+++			compatible = "gw,gsc_input";
+++			interrupt-parent = <&gsc>;
+++			interrupts = <0 1 2 5 7>;
+++			interrupt-names = "button", "key-erased", "eeprom-wp", "tamper", "button-held";
+++			status = "okay";
+++		};
+++	};
+++
+++	gsc_gpio: pca9555@23 {
++ 		compatible = "nxp,pca9555";
++ 		reg = <0x23>;
++ 		gpio-controller;
++ 		#gpio-cells = <2>;
+++		interrupt-parent = <&gsc>;
+++		interrupts = <4>;
++ 	};
++ 
++-	hwmon: gsc@29 {
+++	gsc_hwmon: hwmon@29 {
++ 		compatible = "gw,gsp";
++ 		reg = <0x29>;
++ 	};
++ 
++-	rtc: ds1672@68 {
+++	gsc_rtc: ds1672@68 {
++ 		compatible = "dallas,ds1672";
++ 		reg = <0x68>;
++ 	};
++--- a/arch/arm/boot/dts/imx6qdl-gw52xx.dtsi
+++++ b/arch/arm/boot/dts/imx6qdl-gw52xx.dtsi
++@@ -193,19 +193,45 @@
++ 		pagesize = <16>;
++ 	};
++ 
++-	gpio: pca9555@23 {
+++	gsc: gsc@20 {
+++		compatible = "gw,gsc";
+++		reg = <0x20>;
+++		interrupt-parent = <&gpio1>;
+++		interrupts = <4 1>;
+++		interrupt-controller;
+++		#interrupt-cells = <1>;
+++
+++		/* GSC watchdog */
+++		watchdog {
+++			compatible = "gw,gsc_wdt";
+++			status = "okay";
+++		};
+++
+++		/* Linux input events from GSC interrupt events */
+++		input {
+++			compatible = "gw,gsc_input";
+++			interrupt-parent = <&gsc>;
+++			interrupts = <0 1 2 5 7>;
+++			interrupt-names = "button", "key-erased", "eeprom-wp", "tamper", "button-held";
+++			status = "okay";
+++		};
+++	};
+++
+++	gsc_gpio: pca9555@23 {
++ 		compatible = "nxp,pca9555";
++ 		reg = <0x23>;
++ 		gpio-controller;
++ 		#gpio-cells = <2>;
+++		interrupt-parent = <&gsc>;
+++		interrupts = <4>;
++ 	};
++ 
++-	hwmon: gsc@29 {
+++	gsc_hwmon: hwmon@29 {
++ 		compatible = "gw,gsp";
++ 		reg = <0x29>;
++ 	};
++ 
++-	rtc: ds1672@68 {
+++	gsc_rtc: ds1672@68 {
++ 		compatible = "dallas,ds1672";
++ 		reg = <0x68>;
++ 	};
++--- a/arch/arm/boot/dts/imx6qdl-gw53xx.dtsi
+++++ b/arch/arm/boot/dts/imx6qdl-gw53xx.dtsi
++@@ -195,19 +195,45 @@
++ 		pagesize = <16>;
++ 	};
++ 
++-	gpio: pca9555@23 {
+++	gsc: gsc@20 {
+++		compatible = "gw,gsc";
+++		reg = <0x20>;
+++		interrupt-parent = <&gpio1>;
+++		interrupts = <4 1>;
+++		interrupt-controller;
+++		#interrupt-cells = <1>;
+++
+++		/* GSC watchdog */
+++		watchdog {
+++			compatible = "gw,gsc_wdt";
+++			status = "okay";
+++		};
+++
+++		/* Linux input events from GSC interrupt events */
+++		input {
+++			compatible = "gw,gsc_input";
+++			interrupt-parent = <&gsc>;
+++			interrupts = <0 1 2 5 7>;
+++			interrupt-names = "button", "key-erased", "eeprom-wp", "tamper", "button-held";
+++			status = "okay";
+++		};
+++	};
+++
+++	gsc_gpio: pca9555@23 {
++ 		compatible = "nxp,pca9555";
++ 		reg = <0x23>;
++ 		gpio-controller;
++ 		#gpio-cells = <2>;
+++		interrupt-parent = <&gsc>;
+++		interrupts = <4>;
++ 	};
++ 
++-	hwmon: gsc@29 {
+++	gsc_hwmon: hwmon@29 {
++ 		compatible = "gw,gsp";
++ 		reg = <0x29>;
++ 	};
++ 
++-	rtc: ds1672@68 {
+++	gsc_rtc: ds1672@68 {
++ 		compatible = "dallas,ds1672";
++ 		reg = <0x68>;
++ 	};
++--- a/arch/arm/boot/dts/imx6qdl-gw54xx.dtsi
+++++ b/arch/arm/boot/dts/imx6qdl-gw54xx.dtsi
++@@ -185,19 +185,45 @@
++ 		pagesize = <16>;
++ 	};
++ 
++-	gpio: pca9555@23 {
+++	gsc: gsc@20 {
+++		compatible = "gw,gsc";
+++		reg = <0x20>;
+++		interrupt-parent = <&gpio1>;
+++		interrupts = <4 1>;
+++		interrupt-controller;
+++		#interrupt-cells = <1>;
+++
+++		/* GSC watchdog */
+++		watchdog {
+++			compatible = "gw,gsc_wdt";
+++			status = "okay";
+++		};
+++
+++		/* Linux input events from GSC interrupt events */
+++		input {
+++			compatible = "gw,gsc_input";
+++			interrupt-parent = <&gsc>;
+++			interrupts = <0 1 2 5 7>;
+++			interrupt-names = "button", "key-erased", "eeprom-wp", "tamper", "button-held";
+++			status = "okay";
+++		};
+++	};
+++
+++	gsc_gpio: pca9555@23 {
++ 		compatible = "nxp,pca9555";
++ 		reg = <0x23>;
++ 		gpio-controller;
++ 		#gpio-cells = <2>;
+++		interrupt-parent = <&gsc>;
+++		interrupts = <4>;
++ 	};
++ 
++-	hwmon: gsc@29 {
+++	gsc_hwmon: hwmon@29 {
++ 		compatible = "gw,gsp";
++ 		reg = <0x29>;
++ 	};
++ 
++-	rtc: ds1672@68 {
+++	gsc_rtc: ds1672@68 {
++ 		compatible = "dallas,ds1672";
++ 		reg = <0x68>;
++ 	};
+Index: trunk/target/linux/imx6/patches-3.14/224-ventana-gpio-keys.patch
+===================================================================
+--- trunk/target/linux/imx6/patches-3.14/224-ventana-gpio-keys.patch	(revision 0)
++++ trunk/target/linux/imx6/patches-3.14/224-ventana-gpio-keys.patch	(working copy)
+@@ -0,0 +1,92 @@
++--- a/arch/arm/boot/dts/imx6qdl-gw52xx.dtsi
+++++ b/arch/arm/boot/dts/imx6qdl-gw52xx.dtsi
++@@ -59,6 +59,20 @@
++ 		};
++ 	};
++ 
+++	gpio_keys {
+++		compatible = "gpio-keys-polled";
+++		poll-interval = <100>;
+++		#address-cells = <1>;
+++		#size-cells = <0>;
+++
+++		user_pb {
+++			label = "user_pb";
+++
+++			gpios = <&gsc_gpio 0 1>;
+++			linux,code = <256>;
+++		};
+++	};
+++
++ 	memory {
++ 		reg = <0x10000000 0x20000000>;
++ 	};
++--- a/arch/arm/boot/dts/imx6qdl-gw51xx.dtsi
+++++ b/arch/arm/boot/dts/imx6qdl-gw51xx.dtsi
++@@ -42,6 +42,20 @@
++ 		};
++ 	};
++ 
+++	gpio_keys {
+++		compatible = "gpio-keys-polled";
+++		poll-interval = <100>;
+++		#address-cells = <1>;
+++		#size-cells = <0>;
+++
+++		user_pb {
+++			label = "user_pb";
+++
+++			gpios = <&gsc_gpio 0 1>;
+++			linux,code = <256>;
+++		};
+++	};
+++
++ 	memory {
++ 		reg = <0x10000000 0x20000000>;
++ 	};
++--- a/arch/arm/boot/dts/imx6qdl-gw53xx.dtsi
+++++ b/arch/arm/boot/dts/imx6qdl-gw53xx.dtsi
++@@ -61,6 +61,20 @@
++ 		};
++ 	};
++ 
+++	gpio_keys {
+++		compatible = "gpio-keys-polled";
+++		poll-interval = <100>;
+++		#address-cells = <1>;
+++		#size-cells = <0>;
+++
+++		user_pb {
+++			label = "user_pb";
+++
+++			gpios = <&gsc_gpio 0 1>;
+++			linux,code = <256>;
+++		};
+++	};
+++
++ 	memory {
++ 		reg = <0x10000000 0x40000000>;
++ 	};
++--- a/arch/arm/boot/dts/imx6qdl-gw54xx.dtsi
+++++ b/arch/arm/boot/dts/imx6qdl-gw54xx.dtsi
++@@ -61,6 +61,20 @@
++ 		};
++ 	};
++ 
+++	gpio_keys {
+++		compatible = "gpio-keys-polled";
+++		poll-interval = <100>;
+++		#address-cells = <1>;
+++		#size-cells = <0>;
+++
+++		user_pb {
+++			label = "user_pb";
+++
+++			gpios = <&gsc_gpio 0 1>;
+++			linux,code = <256>;
+++		};
+++	};
+++
++ 	memory {
++ 		reg = <0x10000000 0x40000000>;
++ 	};
 Index: trunk/target/linux/imx6/profiles/120-gateworks.mk
 ===================================================================
 --- trunk/target/linux/imx6/profiles/120-gateworks.mk	(revision 42297)
