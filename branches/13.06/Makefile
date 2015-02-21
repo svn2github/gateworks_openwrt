@@ -17,12 +17,13 @@ all: imx61 cns3xxx ixp4xx
 
 # Fetch and prepare OpenWRT buildroot
 ${OPENWRT}:
-	@./scripts/prepare ${OPENWRT} .config
 	# create dirs
+	@mkdir -p ${OPENWRT}
 	@if [ "${DL_DIR}" -a -d "${DL_DIR}" ]; then \
 		ln -s ${DL_DIR} ${OPENWRT}/dl; \
 	fi
 	@mkdir -p logs
+	@./scripts/prepare ${OPENWRT} .config
 
 # Build for Ventana family
 imx61: ${OPENWRT}
