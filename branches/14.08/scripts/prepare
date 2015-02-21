@@ -1,5 +1,85 @@
 #!/bin/bash
 
+# This function methodologically checks for sources to save on bandwidth,
+# provide protection against build failures, and supplies an easy way
+# to distribute sources. It first searches for tarballs in the DL_DIR, then
+# checks for local dir for tarball, then tries SCM checkout, and if all else
+# fails, grabs the tarball from dev.gateworks.com
+# $1 - Name of feed
+# $2 - scm type <i.e. git/svn>
+# $3 - url of scm in $2
+# $4 - rev of feed to get
+get_source() {
+	local name="${1}"
+	local scm="${2}"
+	local url="${3}"
+	local rev="${4}"
+	local gw_url="http://dev.gateworks.com/sources"
+	local tarname="${name}-${rev}.tar.gz"
+	local dl_dir= res= untardir="${OPENWRT}/feeds"
+
+	echo ""
+	echo "Looking for ${name} sources"
+	echo "Checking for local tarball ${tarname}..."
+
+	[[ "${name}" == "${OPENWRT}" ]] && untardir="."
+	[ -d ${OPENWRT}/dl ] && dl_dir="${OPENWRT}/dl"
+
+	# Check if source exists (iff a feeds package)
+	[ -d "${untardir}"/"${name}" ] && {
+		[[ "${name}" == "${OPENWRT}" ]] || {
+			echo "${untardir}"/"${name} already exists"
+			return
+		}
+	}
+
+	# First try to find tarball locally
+	res=$(find -L . ${dl_dir:+"${dl_dir}"} -maxdepth 1 -name "${tarname}")
+	res=$(echo "${res}" | head -n1)
+
+	[ -e "${res}" ] && {
+		# since tarball was found, let's make sure dir is there
+		mkdir -p "${untardir}"
+		tar xzvf "${res}" -C "${untardir}"
+		echo "Checked out ${name}"
+		return
+	}
+
+	# If local tarball not found, let's try SCM
+	echo "Attempting fetch of $name from $url;$rev..."
+	case "$scm" in
+		git)
+			echo "git clone $url $name@$rev"
+			(cd "${untardir}" && git clone $url $name) && \
+				(cd "${untardir}"/$name && \
+					git checkout -b $rev $rev) && return
+			;;
+		svn)
+			echo "svn co $url $name@$rev"
+			(svn checkout -r$rev $url "${untardir}"/$name) && return;
+			;;
+		*)
+			echo "scm $scm unsupported"
+			;;
+	esac
+
+	# Finally, attempt to get tarball from gw sources server
+	wget "${gw_url}"/"${tarname}" -O ${dl_dir:-.}/"${tarname}"
+	res="$?"
+
+	[ "${res}" -eq 0 ] && {
+		# since tarball wgetted, let's make sure feeds dir is there
+		mkdir -p "${untardir}"
+		tar xzvf ${dl_dir:-.}/"${tarname}" -C "${untardir}"
+		echo "Checked out ${name}"
+		return
+	}
+
+	# error out
+	echo "Couldn't get ${name} sources"
+	exit 2
+}
+
 # Prepare a patched and pinned OpenWrt directory for building
 
 # Directory name for openwrt tree
@@ -16,8 +96,7 @@ CONFIG=$2
 #}
 . $CONFIG
 
-echo "Fetching Openwrt trunk@r${SRCREV}..."
-svn co -r${SRCREV} svn://svn.openwrt.org/openwrt/trunk ${OPENWRT} || exit 2
+get_source "${OPENWRT}" "svn" "svn://svn.openwrt.org/openwrt/trunk" "${SRCREV}"
 
 echo "Patching..."
 ./${OPENWRT}/scripts/patch-kernel.sh ${OPENWRT} ./patches || exit 2
@@ -28,19 +107,7 @@ for val in $FEEDS; do
 	scm="${val%%;*}"; val="${val#*;}"
 	url="${val%%;*}"; val="${val#*;}"
 	rev="${val%%;*}"; val="${val#*;}"
-	echo ""
-	echo "Fetching $name from $url;$rev..."
-	case "$scm" in
-		git)
-			echo "git clone $url $name"
-			(cd ${OPENWRT}/feeds && git clone $url $name) || exit 2;
-			echo "git checkout $rev"
-			(cd ${OPENWRT}/feeds/$name && git checkout -b $rev $rev) || exit 2;
-			;;
-		svn)
-			svn checkout -r$rev $url ${OPENWRT}/feeds/$name || exit 2;
-			;;
-	esac
+	get_source "${name}" "${scm}" "${url}" "${rev}"
 done
 
 echo "Fetching pinned dirs..."
