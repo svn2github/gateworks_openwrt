@@ -2361,6 +2361,19 @@ Index: trunk/target/linux/imx6/files-3.14/include/linux/mfd/gsc.h
 +int gsc_powerdown(unsigned long seconds);
 +
 +#endif
+Index: trunk/target/linux/imx6/patches-3.14/0003-ARM-dts-add-Gateworks-Ventana-support.patch
+===================================================================
+--- trunk/target/linux/imx6/patches-3.14/0003-ARM-dts-add-Gateworks-Ventana-support.patch	(revision 42297)
++++ trunk/target/linux/imx6/patches-3.14/0003-ARM-dts-add-Gateworks-Ventana-support.patch	(working copy)
+@@ -1457,7 +1457,7 @@
+ +
+ +	accelerometer: fxos8700@1e {
+ +		compatible = "fsl,fxos8700";
+-+		reg = <0x13>;
+++		reg = <0x1e>;
+ +	};
+ +
+ +	codec: sgtl5000@0a {
 Index: trunk/target/linux/imx6/patches-3.14/0009-ARM-imx-dts-add-GW52xx-can-support.patch
 ===================================================================
 --- trunk/target/linux/imx6/patches-3.14/0009-ARM-imx-dts-add-GW52xx-can-support.patch	(revision 0)
