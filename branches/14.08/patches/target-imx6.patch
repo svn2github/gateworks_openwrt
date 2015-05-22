@@ -1,3 +1,19 @@
+Index: trunk/target/linux/imx6/base-files/lib/imx6.sh
+===================================================================
+--- trunk/target/linux/imx6/base-files/lib/imx6.sh	(revision 42297)
++++ trunk/target/linux/imx6/base-files/lib/imx6.sh	(working copy)
+@@ -34,6 +34,11 @@
+ 		name="gw54xx"
+ 		;;
+ 
++	"Gateworks Ventana i.MX6 Dual/Quad GW551X" |\
++	"Gateworks Ventana i.MX6 Solo/DualLite GW551X")
++		name="gw551x"
++		;;
++
+ 	"Gateworks Ventana i.MX6 DualLite/Solo GW552X" |\
+ 	"Gateworks Ventana i.MX6 Dual/Quad GW552X")
+ 		name="gw552x"
 Index: trunk/target/linux/imx6/base-files/lib/upgrade/platform.sh
 ===================================================================
 --- trunk/target/linux/imx6/base-files/lib/upgrade/platform.sh	(revision 42297)
