@@ -72,7 +72,30 @@ Index: trunk/package/kernel/linux/modules/input.mk
 ===================================================================
 --- trunk/package/kernel/linux/modules/input.mk	(revision 42297)
 +++ trunk/package/kernel/linux/modules/input.mk	(working copy)
-@@ -202,3 +202,19 @@
+@@ -122,6 +122,22 @@
+ $(eval $(call KernelPackage,input-gpio-encoder))
+ 
+ 
++define KernelPackage/input-gsc
++  SUBMENU:=$(INPUT_MODULES_MENU)
++  TITLE:=Gateworks System Controller Input events
++  KCONFIG:=CONFIG_INPUT_GSC
++  FILES:=$(LINUX_DIR)/drivers/input/misc/gsc-input.ko
++  AUTOLOAD:=$(call AutoProbe,gsc-input)
++  $(call AddDepends/input)
++endef
++
++define KernelPackage/input-gsc/description
++ Kernel module to create Linux Input events from various GSC interrupt events
++endef
++
++$(eval $(call KernelPackage,input-gsc))
++
++
+ define KernelPackage/input-joydev
+   SUBMENU:=$(INPUT_MODULES_MENU)
+   TITLE:=Joystick device support
+@@ -202,3 +218,19 @@
  endef
  
  $(eval $(call KernelPackage,keyboard-imx))
