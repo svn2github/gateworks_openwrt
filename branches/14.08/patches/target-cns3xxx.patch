@@ -27,15 +27,13 @@ Index: trunk/target/linux/cns3xxx/config-3.10
 ===================================================================
 --- trunk/target/linux/cns3xxx/config-3.10	(revision 42297)
 +++ trunk/target/linux/cns3xxx/config-3.10	(working copy)
-@@ -263,3 +263,8 @@
+@@ -263,3 +263,6 @@
  CONFIG_ZBOOT_ROM_BSS=0
  CONFIG_ZBOOT_ROM_TEXT=0
  CONFIG_ZONE_DMA_FLAG=0
 +CONFIG_GSC_CORE=y
 +CONFIG_WATCHDOG_CORE=y
 +CONFIG_GSC_WATCHDOG=y
-+CONFIG_INPUT=y
-+CONFIG_INPUT_GSC=y
 Index: trunk/target/linux/cns3xxx/files/arch/arm/mach-cns3xxx/gpio.c
 ===================================================================
 --- trunk/target/linux/cns3xxx/files/arch/arm/mach-cns3xxx/gpio.c	(revision 42297)
@@ -168,7 +166,7 @@ Index: trunk/target/linux/cns3xxx/files/drivers/input/misc/gsc-input.c
 ===================================================================
 --- trunk/target/linux/cns3xxx/files/drivers/input/misc/gsc-input.c	(revision 0)
 +++ trunk/target/linux/cns3xxx/files/drivers/input/misc/gsc-input.c	(working copy)
-@@ -0,0 +1,280 @@
+@@ -0,0 +1,163 @@
 +/*
 + * Copyright (C) 2014 Gateworks Corporation
 + *
@@ -183,8 +181,6 @@ Index: trunk/target/linux/cns3xxx/files/drivers/input/misc/gsc-input.c
 +#include <linux/init.h>
 +#include <linux/input.h>
 +#include <linux/interrupt.h>
-+#include <linux/irq.h>
-+#include <linux/irqdomain.h>
 +#include <linux/kernel.h>
 +#include <linux/module.h>
 +#include <linux/of_irq.h>
@@ -194,114 +190,12 @@ Index: trunk/target/linux/cns3xxx/files/drivers/input/misc/gsc-input.c
 +
 +#define DRIVER_NAME "gsc_input"
 +
-+struct gsc_agent {
-+	int irq_base;
-+	int irq_num;
-+};
-+
-+static struct gsc_agent *gsc_agent;
-+
-+static struct irq_chip gsc_irq_chip = {
-+	.name		= "gsc",
-+	.flags		= IRQCHIP_SKIP_SET_WAKE,
-+};
-+
-+static irqreturn_t gsc_irq(int irq, void *data)
-+{
-+	struct gsc_agent *agent = data;
-+	u8 sts;
-+
-+	gsc_i2c_read(GSC_IRQ_STATUS, &sts);
-+	pr_debug("gsc: irq%d status=0x%02x\n", irq, sts);
-+
-+	while (sts) {
-+		irq = fls(sts);
-+		irq--;
-+		sts &= ~BIT(irq);
-+
-+		handle_nested_irq(agent->irq_base + irq);
-+	}
-+
-+	/* clear all status bits */
-+	gsc_i2c_write(GSC_IRQ_STATUS, 0);
-+
-+	return IRQ_HANDLED;
-+}
-+
-+static int gsc_irq_init(struct device *dev, int irq_num)
-+{
-+	static struct irq_chip gsc_mod_irq_chip;
-+	int ret, i;
-+	int irq_base, irq_end, nr_irqs;
-+	struct device_node *node = dev->of_node;
-+	struct gsc_agent *agent;
-+	u8 reg;
-+
-+	agent = devm_kzalloc(dev, sizeof *agent, GFP_KERNEL);
-+	if (!agent)
-+		return -ENOMEM;
-+
-+	nr_irqs = 8;
-+
-+	/* allocate 8 virq's for GSC status register bits */
-+	irq_base = irq_alloc_descs(-1, 0, nr_irqs, 0);
-+	if (irq_base< 0)
-+		return irq_base;
-+
-+	irq_domain_add_legacy(node, nr_irqs, irq_base, 0,
-+			      &irq_domain_simple_ops, NULL);
-+	irq_end = irq_base + nr_irqs;
-+
-+	/* clear all GSC interrupts */
-+	ret = gsc_i2c_read(GSC_IRQ_ENABLE, &reg);
-+	if (ret < 0) {
-+		dev_err(dev, "failed reading GSC_IRQ_ENABLE\n");
-+		return ret;
-+	}
-+	if (reg == 0)
-+		dev_warn(dev, "no GSC interrupts enabled\n");
-+	gsc_i2c_write(GSC_IRQ_STATUS, 0);
-+
-+	/* install irq handler for each module */
-+	gsc_mod_irq_chip = dummy_irq_chip;
-+	gsc_mod_irq_chip.name = "gsc";
-+
-+	gsc_irq_chip.irq_ack = dummy_irq_chip.irq_ack;
-+	agent->irq_base = irq_base;
-+
-+	for (i = irq_base; i < irq_end; i++) {
-+		irq_set_chip_data(i, agent);
-+		irq_set_chip_and_handler(i, &gsc_mod_irq_chip,
-+					 handle_simple_irq);
-+		irq_set_nested_thread(i, 1);
-+	}
-+	gsc_i2c_write(GSC_IRQ_ENABLE, reg);
-+
-+	/* install irq handler to demux the GSC IRQ */
-+	ret = devm_request_threaded_irq(dev, irq_num, NULL, gsc_irq,
-+					IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-+					"gsc", agent);
-+	if (ret < 0) {
-+		dev_err(dev, "could not claim irq%d: %d\n", irq_num, ret);
-+		goto fail_reqirq;
-+	}
-+	enable_irq_wake(irq_num);
-+	gsc_agent = agent;
-+	gsc_agent->irq_num = irq_num;
-+
-+	return irq_base;
-+
-+fail_reqirq:
-+	irq_free_descs(irq_base, nr_irqs);
-+
-+	return ret;
-+}
-+
 +static irqreturn_t gsc_input_irq(int irq, void *data)
 +{
 +	struct input_dev *input = (struct input_dev *)data;
 +	int key;
 +	u8 sts;
++	struct irq_desc *desc = irq_to_desc(irq);
 +
 +	gsc_i2c_read(GSC_IRQ_STATUS, &sts);
 +	dev_dbg(&input->dev, "irq%d status=0x%02x\n", irq, sts);
@@ -341,9 +235,9 @@ Index: trunk/target/linux/cns3xxx/files/drivers/input/misc/gsc-input.c
 +			break;
 +		}
 +
-+		if (key) {
++		if (desc->action->name) {
 +			dev_dbg(&input->dev, "bit%d: key=0x%03x %s\n", irq,
-+				key, irq_to_desc(irq)->name);
++				key, desc->action->name);
 +			input_report_key(input, key, 1);
 +			input_report_key(input, key, 0);
 +			input_sync(input);
@@ -356,7 +250,7 @@ Index: trunk/target/linux/cns3xxx/files/drivers/input/misc/gsc-input.c
 +static int gsc_input_probe(struct platform_device *pdev)
 +{
 +	struct input_dev *input;
-+	int err, i, irq, irq_base;
++	int err, i, irq;
 +	struct resource r;
 +	u8 reg;
 +
@@ -364,17 +258,6 @@ Index: trunk/target/linux/cns3xxx/files/drivers/input/misc/gsc-input.c
 +		dev_err(&pdev->dev, "failed reading GSC_CTRL_0\n");
 +		return -EIO;
 +	}
-+
-+	irq = platform_get_irq(pdev, 0);
-+	if (irq < 0) {
-+		dev_err(&pdev->dev, "No IRQ resource\n");
-+		return -EINVAL;
-+	}
-+	irq_base = gsc_irq_init(&pdev->dev, irq);
-+	if (irq_base < 0)
-+		return irq_base;
-+	dev_info(&pdev->dev, "irq%d: chained 8 interrupts at irq%d\n",
-+		irq, irq_base);
 +
 +	input = devm_input_allocate_device(&pdev->dev);
 +	if (!input) {
@@ -422,8 +305,6 @@ Index: trunk/target/linux/cns3xxx/files/drivers/input/misc/gsc-input.c
 +
 +static int gsc_input_remove(struct platform_device *pdev)
 +{
-+	irq_free_descs(gsc_agent->irq_base, nr_irqs);
-+
 +	dev_info(&pdev->dev, "input driver removed\n");
 +	return 0;
 +}
@@ -453,7 +334,7 @@ Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.c
 ===================================================================
 --- trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.c	(revision 0)
 +++ trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.c	(working copy)
-@@ -0,0 +1,433 @@
+@@ -0,0 +1,459 @@
 +/*
 + * Copyright (C) 2014 Gateworks Corporation
 + *
@@ -478,6 +359,8 @@ Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.c
 +#include <linux/of_platform.h>
 +#include <linux/platform_device.h>
 +
++#include "gsc-core.h"
++
 +#define I2C_RETRIES	3
 +
 +/*
@@ -485,6 +368,9 @@ Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.c
 + * "Power Management and System Companion Device" chips originally designed for
 + * use in Gateworks Single Board Computers. The control interface is I2C,
 + * at 100kbps, with an interrupt.
++ *
++ * This driver core provides genirq support for the interrupts emitted,
++ * by the various modules, and exports register access primitives.
 + *
 + */
 +
@@ -507,7 +393,7 @@ Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.c
 +static struct gsc *gsc_priv;
 +
 +/**
-+ * gsc_i2c_write - Writes a register to GSC
++ * gsc_i2c_write - Writes a register to GSC with retries
 + * @reg: register address
 + * @val: value to write
 + *
@@ -515,10 +401,17 @@ Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.c
 + */
 +int __gsc_i2c_write(u8 reg, u8 val)
 +{
-+	int retry, ret = -EAGAIN;
++	int retry, ret;
 +
-+	for (retry = 0; ret == -EAGAIN && retry < I2C_RETRIES; retry++)
++	for (retry = 0; retry < I2C_RETRIES; retry++) {
 +		ret = i2c_smbus_write_byte_data(gsc_priv->client, reg, val);
++		/*
++		 * -EAGAIN returned when the i2c host controller is busy
++		 * -EIO returned when i2c device is busy
++		 */
++		if (ret != -EAGAIN && ret != -EIO)
++			break;
++	}
 +	if (ret < 0) {
 +		dev_err(&gsc_priv->client->dev, ">> 0x%02x %d\n", reg, ret);
 +		return ret;
@@ -530,7 +423,7 @@ Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.c
 +}
 +
 +/**
-+ * gsc_i2c_read - Reads register from GSC
++ * gsc_i2c_read - Reads register from GSC with retries
 + * @reg: register address
 + * @val: value to write
 + *
@@ -538,10 +431,17 @@ Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.c
 + */
 +static int __gsc_i2c_read(u8 reg, u8 *val)
 +{
-+	int retry, ret = -EAGAIN;
++	int retry, ret;
 +
-+	for (retry = 0; ret == -EAGAIN && retry < I2C_RETRIES; retry++)
++	for (retry = 0; retry < I2C_RETRIES; retry++) {
 +		ret = i2c_smbus_read_byte_data(gsc_priv->client, reg);
++		/*
++		 * -EAGAIN returned when the i2c host controller is busy
++		 * -EIO returned when i2c device is busy
++		 */
++		if (ret != -EAGAIN && ret != -EIO)
++			break;
++	}
 +	if (ret < 0) {
 +		dev_err(&gsc_priv->client->dev, "<< 0x%02x %d\n", reg, ret);
 +		return ret;
@@ -786,9 +686,13 @@ Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.c
 +{
 +	struct device *dev = &client->dev;
 +	struct gsc *gsc;
-+	int ret;
++	int ret, irq_base = 0;
 +	u8 reg;
 +
++	if (client->irq <= 0) {
++		dev_err(dev, "%s: no irq specified\n", DRIVER_NAME);
++		return -EINVAL;
++	}
 +	if (gsc_priv) {
 +		dev_err(dev, "already initialized\n");
 +		return -EBUSY;
@@ -817,8 +721,11 @@ Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.c
 +	gsc->fwcrc |= reg;
 +	gsc->ready = true;
 +
-+	dev_info(dev, "Gateworks System Controller: fw v%02d crc=0x%04x\n",
-+		 gsc->fwver, gsc->fwcrc);
++	irq_base = gsc_irq_init(&client->dev, client->irq);
++	if (irq_base < 0)
++		return irq_base;
++	dev_info(dev, "Gateworks System Controller: fw v%02d crc=0x%04x irq%d\n",
++		 gsc->fwver, gsc->fwcrc, client->irq);
 +
 +	i2c_set_clientdata(client, gsc);
 +	gsc->dev = &client->dev;
@@ -887,6 +794,152 @@ Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.c
 +MODULE_AUTHOR("Tim Harvey <tharvey@gateworks.com>");
 +MODULE_DESCRIPTION("I2C Core interface for GSC");
 +MODULE_LICENSE("GPL v2");
+Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.h
+===================================================================
+--- trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.h	(revision 0)
++++ trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-core.h	(working copy)
+@@ -0,0 +1,7 @@
++#ifndef __GSC_CORE_H_
++#define __GSC_CORE_H_
++
++extern int gsc_irq_init(struct device *dev, int irq_num);
++extern int gsc_irq_exit(void);
++
++#endif /* __GSC_CORE_H_ */
+Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-irq.c
+===================================================================
+--- trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-irq.c	(revision 0)
++++ trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-irq.c	(working copy)
+@@ -0,0 +1,129 @@
++/*
++ * Copyright (C) 2014 Gateworks Corporation
++ *
++ * Written by Tim Harvey <tharvey@gateworks.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++
++#include <linux/device.h>
++#include <linux/delay.h>
++#include <linux/input.h>
++#include <linux/interrupt.h>
++#include <linux/irq.h>
++#include <linux/irqdomain.h>
++#include <linux/module.h>
++#include <linux/slab.h>
++
++#include <linux/mfd/gsc.h>
++
++struct gsc_agent {
++	int irq_base;
++	int irq_num;
++};
++
++static struct gsc_agent *gsc_agent;
++
++static struct irq_chip gsc_irq_chip = {
++	.name		= "gsc",
++	.flags		= IRQCHIP_SKIP_SET_WAKE,
++};
++
++static irqreturn_t gsc_irq(int irq, void *data)
++{
++	struct gsc_agent *agent = data;
++	u8 sts;
++
++	gsc_i2c_read(GSC_IRQ_STATUS, &sts);
++	pr_debug("gsc: irq%d status=0x%02x\n", irq, sts);
++
++	while (sts) {
++		irq = fls(sts);
++		irq--;
++		sts &= ~BIT(irq);
++
++		handle_nested_irq(agent->irq_base + irq);
++	}
++
++	/* clear all status bits */
++	gsc_i2c_write(GSC_IRQ_STATUS, 0);
++
++	return IRQ_HANDLED;
++}
++
++int gsc_irq_init(struct device *dev, int irq_num)
++{
++	static struct irq_chip gsc_mod_irq_chip;
++	int ret, i;
++	int irq_base, irq_end, nr_irqs;
++	struct device_node *node = dev->of_node;
++	struct gsc_agent *agent;
++	u8 reg;
++
++	agent = devm_kzalloc(dev, sizeof *agent, GFP_KERNEL);
++	if (!agent)
++		return -ENOMEM;
++
++	nr_irqs = 8;
++
++	/* allocate 8 virq's for GSC status register bits */
++	irq_base = irq_alloc_descs(-1, 0, nr_irqs, 0);
++	if (irq_base< 0)
++		return irq_base;
++
++	irq_domain_add_legacy(node, nr_irqs, irq_base, 0,
++			      &irq_domain_simple_ops, NULL);
++	irq_end = irq_base + nr_irqs;
++
++	/* clear all GSC interrupts */
++	ret = gsc_i2c_read(GSC_IRQ_ENABLE, &reg);
++	if (ret < 0) {
++		dev_err(dev, "failed reading GSC_IRQ_ENABLE\n");
++		return ret;
++	}
++	if (reg == 0)
++		dev_warn(dev, "no GSC interrupts enabled\n");
++	gsc_i2c_write(GSC_IRQ_STATUS, 0);
++
++	/* install irq handler for each module */
++	gsc_mod_irq_chip = dummy_irq_chip;
++	gsc_mod_irq_chip.name = "gsc";
++
++	gsc_irq_chip.irq_ack = dummy_irq_chip.irq_ack;
++	agent->irq_base = irq_base;
++
++	for (i = irq_base; i < irq_end; i++) {
++		irq_set_chip_data(i, agent);
++		irq_set_chip_and_handler(i, &gsc_mod_irq_chip,
++					 handle_simple_irq);
++		irq_set_nested_thread(i, 1);
++	}
++	gsc_i2c_write(GSC_IRQ_ENABLE, reg);
++
++	/* install irq handler to demux the GSC IRQ */
++	ret = devm_request_threaded_irq(dev, irq_num, NULL, gsc_irq,
++					IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
++					"gsc", agent);
++	if (ret < 0) {
++		dev_err(dev, "could not claim irq%d: %d\n", irq_num, ret);
++		goto fail_reqirq;
++	}
++	enable_irq_wake(irq_num);
++	gsc_agent = agent;
++	gsc_agent->irq_num = irq_num;
++
++	return irq_base;
++
++fail_reqirq:
++	irq_free_descs(irq_base, nr_irqs);
++
++	return ret;
++}
++
++int gsc_irq_exit(void)
++{
++	irq_free_descs(gsc_agent->irq_base, nr_irqs);
++	return 0;
++}
 Index: trunk/target/linux/cns3xxx/files/drivers/watchdog/gsc_wdt.c
 ===================================================================
 --- trunk/target/linux/cns3xxx/files/drivers/watchdog/gsc_wdt.c	(revision 0)
@@ -1350,7 +1403,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/420-ventana-gsc-core.patch
 ===================================================================
 --- trunk/target/linux/cns3xxx/patches-3.10/420-ventana-gsc-core.patch	(revision 0)
 +++ trunk/target/linux/cns3xxx/patches-3.10/420-ventana-gsc-core.patch	(working copy)
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,34 @@
 +--- a/drivers/mfd/Kconfig
 ++++ b/drivers/mfd/Kconfig
 +@@ -169,6 +169,20 @@ config MFD_MC13XXX_I2C
@@ -1376,11 +1429,12 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/420-ventana-gsc-core.patch
 + 	depends on GENERIC_HARDIRQS && GPIOLIB && ARM
 +--- a/drivers/mfd/Makefile
 ++++ b/drivers/mfd/Makefile
-+@@ -15,6 +15,7 @@ obj-$(CONFIG_MFD_CROS_EC_SPI)	+= cros_ec
++@@ -15,6 +15,8 @@ obj-$(CONFIG_MFD_CROS_EC_SPI)	+= cros_ec
 + rtsx_pci-objs			:= rtsx_pcr.o rts5209.o rts5229.o rtl8411.o rts5227.o rts5249.o
 + obj-$(CONFIG_MFD_RTSX_PCI)	+= rtsx_pci.o
 + 
-++obj-$(CONFIG_GSC_CORE)		+= gsc-core.o
+++gsc-objs			:= gsc-core.o gsc-irq.o
+++obj-$(CONFIG_GSC_CORE)		+= gsc.o
 + obj-$(CONFIG_HTC_EGPIO)		+= htc-egpio.o
 + obj-$(CONFIG_HTC_PASIC3)	+= htc-pasic3.o
 + obj-$(CONFIG_HTC_I2CPLD)	+= htc-i2cpld.o
@@ -1455,7 +1509,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 ===================================================================
 --- trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.patch	(revision 0)
 +++ trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.patch	(working copy)
-@@ -0,0 +1,438 @@
+@@ -0,0 +1,460 @@
 +--- a/arch/arm/mach-cns3xxx/laguna.c
 ++++ b/arch/arm/mach-cns3xxx/laguna.c
 +@@ -20,9 +20,11 @@
@@ -1479,7 +1533,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + };
 + 
 + static struct pca953x_platform_data laguna_pca2_data = {
-+@@ -615,13 +617,20 @@ static struct pca953x_platform_data lagu
++@@ -615,14 +617,24 @@ static struct pca953x_platform_data lagu
 + 	.irq_base = -1,
 + };
 + 
@@ -1494,6 +1548,11 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 ++	.platform_data = &laguna_pca2_data,
 ++};
 ++
+++static struct i2c_board_info gsc_i2cinfo = {
+++	I2C_BOARD_INFO("gsc", 0x20),
+++	.irq = -1, /* assigned at runtime */
+++};
+++
 + static struct i2c_board_info __initdata laguna_i2c_devices[] = {
 + 	{
 +-		I2C_BOARD_INFO("pca9555", 0x23),
@@ -1501,11 +1560,11 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 +-	},{
 +-		I2C_BOARD_INFO("pca9555", 0x27),
 +-		.platform_data = &laguna_pca2_data,
-++		I2C_BOARD_INFO("gsc", 0x20),
-+ 	},{
++-	},{
 + 		I2C_BOARD_INFO("gsp", 0x29),
 + 	},{
-+@@ -636,6 +645,11 @@ static struct i2c_board_info __initdata
++ 		I2C_BOARD_INFO ("24c08",0x50),
++@@ -636,6 +648,11 @@ static struct i2c_board_info __initdata
 +  * Watchdog
 +  */
 + 
@@ -1517,31 +1576,22 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + static struct resource laguna_watchdog_resources[] = {
 + 	[0] = {
 + 		.start	= CNS3XXX_TC11MP_TWD_BASE + 0x100, // CPU0 watchdog
-+@@ -652,6 +666,23 @@ static struct platform_device laguna_wat
++@@ -652,6 +669,14 @@ static struct platform_device laguna_wat
 + };
 + 
 + /*
 ++ * GSC Input device
 ++ */
-++static struct resource laguna_input_resources[] = {
-++	[0] = {
-++		.start = -1, /* dynamically assigned */
-++		.flags = IORESOURCE_IRQ,
-++	},
-++};
-++
 ++static struct platform_device laguna_gsc_input = {
 ++	.name		= "gsc_input",
 ++	.id		= -1,
-++	.num_resources	= ARRAY_SIZE(laguna_input_resources),
-++	.resource	= laguna_input_resources,
 ++};
 ++
 ++/*
 +  * GPS PPS
 +  */
 + static struct pps_gpio_platform_data laguna_pps_data = {
-+@@ -673,14 +704,12 @@ static struct platform_device laguna_pps
++@@ -673,14 +698,12 @@ static struct platform_device laguna_pps
 + 
 + static struct gpio laguna_gpio_gw2391[] = {
 + 	{   0, GPIOF_IN           , "*GPS_PPS" },
@@ -1556,7 +1606,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 	{ 103, GPIOF_OUT_INIT_HIGH, "*V5_EN" },
 + 	{ 108, GPIOF_IN           , "DIO0" },
 + 	{ 109, GPIOF_IN           , "DIO1" },
-+@@ -691,13 +720,11 @@ static struct gpio laguna_gpio_gw2391[]
++@@ -691,13 +714,11 @@ static struct gpio laguna_gpio_gw2391[]
 + 
 + static struct gpio laguna_gpio_gw2388[] = {
 + 	{   0, GPIOF_IN           , "*GPS_PPS" },
@@ -1570,7 +1620,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 	{ 108, GPIOF_IN           , "DIO0" },
 + 	{ 109, GPIOF_IN           , "DIO1" },
 + 	{ 110, GPIOF_IN           , "DIO2" },
-+@@ -707,14 +734,12 @@ static struct gpio laguna_gpio_gw2388[]
++@@ -707,14 +728,12 @@ static struct gpio laguna_gpio_gw2388[]
 + 
 + static struct gpio laguna_gpio_gw2387[] = {
 + 	{   0, GPIOF_IN           , "*GPS_PPS" },
@@ -1585,7 +1635,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 	{ 103, GPIOF_OUT_INIT_HIGH, "*V5_EN" },
 + 	{ 108, GPIOF_IN           , "DIO0" },
 + 	{ 109, GPIOF_IN           , "DIO1" },
-+@@ -724,8 +749,22 @@ static struct gpio laguna_gpio_gw2387[]
++@@ -724,8 +743,22 @@ static struct gpio laguna_gpio_gw2387[]
 + 	{ 113, GPIOF_IN           , "DIO5" },
 + };
 + 
@@ -1609,7 +1659,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 	{   1, GPIOF_OUT_INIT_HIGH, "*USB_HST_VBUS_EN" },
 + 	{   2, GPIOF_IN           , "*USB_HST_FAULT#" },
 + 	{   5, GPIOF_IN           , "*USB_OTG_FAULT#" },
-+@@ -735,12 +774,10 @@ static struct gpio laguna_gpio_gw2385[]
++@@ -735,12 +768,10 @@ static struct gpio laguna_gpio_gw2385[]
 + 	{   9, GPIOF_OUT_INIT_LOW , "*SER_EN" },
 + 	{  10, GPIOF_IN,            "*USER_PB#" },
 + 	{  11, GPIOF_OUT_INIT_HIGH, "*PERST#" },
@@ -1622,7 +1672,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 	{   1, GPIOF_OUT_INIT_HIGH, "*USB_HST_VBUS_EN" },
 + 	{   2, GPIOF_IN           , "*USB_HST_FAULT#" },
 + 	{   5, GPIOF_IN           , "*USB_OTG_FAULT#" },
-+@@ -752,25 +789,21 @@ static struct gpio laguna_gpio_gw2384[]
++@@ -752,25 +783,21 @@ static struct gpio laguna_gpio_gw2384[]
 + 	{  13, GPIOF_OUT_INIT_HIGH, "*I2CMUX_RST#" },
 + 	{  14, GPIOF_OUT_INIT_LOW , "J10_DIOLED1" },
 + 	{  15, GPIOF_OUT_INIT_LOW , "J10_DIOLED2" },
@@ -1648,7 +1698,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 	{   2, GPIOF_OUT_INIT_HIGH, "*PCIE_RST#" },
 + 	{   3, GPIOF_IN           , "GPIO0" },
 + 	{   4, GPIOF_IN           , "GPIO1" },
-+@@ -778,19 +811,45 @@ static struct gpio laguna_gpio_gw2382[]
++@@ -778,19 +805,45 @@ static struct gpio laguna_gpio_gw2382[]
 + 	{  10, GPIOF_OUT_INIT_HIGH, "*USB_PCI_SEL#" },
 + 	{ 100, GPIOF_IN           , "DIO0" },
 + 	{ 101, GPIOF_IN           , "DIO1" },
@@ -1697,14 +1747,12 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + };
 + 
 + /*
-+@@ -806,10 +865,18 @@ static void __init laguna_init(void)
++@@ -806,10 +859,14 @@ static void __init laguna_init(void)
 + 				      cns3xxx_cpu_clock() * (1000000 / 8));
 + 	clk_register_clkdev(clk, "cpu", NULL);
 + 
-++	platform_device_register(&laguna_gsc_watchdog);
-++
-+ 	platform_device_register(&laguna_watchdog);
-+ 
++-	platform_device_register(&laguna_watchdog);
++-
 + 	platform_device_register(&laguna_i2c_controller);
 + 
 ++	/* GPIO controllers */
@@ -1716,7 +1764,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 	/* Set I2C 0-3 drive strength to 21 mA */
 + 	reg = MISC_IO_PAD_DRIVE_STRENGTH_CTRL_B;
 + 	*reg |= 0x300;
-+@@ -928,8 +995,6 @@ static int __init laguna_model_setup(voi
++@@ -928,8 +985,6 @@ static int __init laguna_model_setup(voi
 + 		return 0;
 + 
 + 	printk("Running on Gateworks Laguna %s\n", laguna_info.model);
@@ -1725,7 +1773,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 
 + 	if (cns3xxx_pciextirq) {
 + 		/*
-+@@ -943,16 +1008,10 @@ static int __init laguna_model_setup(voi
++@@ -943,16 +998,10 @@ static int __init laguna_model_setup(voi
 + 		reg |= 0x38000000;
 + 		__raw_writel(reg, mem);
 + 
@@ -1742,14 +1790,15 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 	}
 + 
 + 	if (strncmp(laguna_info.model, "GW", 2) == 0) {
-+@@ -1065,19 +1124,52 @@ static int __init laguna_model_setup(voi
++@@ -1065,19 +1114,56 @@ static int __init laguna_model_setup(voi
 + 		if ( (strncmp(laguna_info.model, "GW2388", 6) == 0)
 + 		  || (strncmp(laguna_info.model, "GW2389", 6) == 0) )
 + 		{
 +-			// configure GPIO's
 ++			// GSC
-++			laguna_input_resources[0].start = 97;
 ++			laguna_keys[0].gpio = 100;
+++			gsc_i2cinfo.irq = 97;
+++			i2c_new_device(i2c_get_adapter(0), &gsc_i2cinfo);
 ++			// GPIO's
 + 			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2388));
 +-			// configure LED's
@@ -1763,13 +1812,14 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 		} else if (strncmp(laguna_info.model, "GW2387", 6) == 0) {
 +-			// configure GPIO's
 ++			// GSC
-++			laguna_input_resources[0].start = 97;
 ++			laguna_keys[0].gpio = 100;
+++			gsc_i2cinfo.irq = 97;
+++			i2c_new_device(i2c_get_adapter(0), &gsc_i2cinfo);
 ++			// GPIO's
 + 			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2387));
 +-			// configure LED's
 ++			// LED's
-+ 			laguna_gpio_leds_data.num_leds = 2;
+++			laguna_gpio_leds_data.num_leds = 2;
 ++
 ++			i2c_new_device(i2c_get_adapter(0), &gscgpio_i2cinfo);
 ++			platform_device_register(&laguna_gpio_leds_device);
@@ -1777,12 +1827,13 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 ++			platform_device_register(&laguna_keys_device);
 ++		} else if (strncmp(laguna_info.model, "GW2386", 6) == 0) {
 ++			// GSC
-++			laguna_input_resources[0].start = 97;
 ++			laguna_keys[0].gpio = 100;
+++			gsc_i2cinfo.irq = 97;
+++			i2c_new_device(i2c_get_adapter(0), &gsc_i2cinfo);
 ++			// GPIO's
 ++			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2386));
 ++			// LED's
-++			laguna_gpio_leds_data.num_leds = 2;
++ 			laguna_gpio_leds_data.num_leds = 2;
 ++
 ++			i2c_new_device(i2c_get_adapter(0), &gscgpio_i2cinfo);
 ++			i2c_new_device(i2c_get_adapter(0), &pca2_i2cinfo);
@@ -1792,8 +1843,9 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 		} else if (strncmp(laguna_info.model, "GW2385", 6) == 0) {
 +-			// configure GPIO's
 ++			// GSC
-++			laguna_input_resources[0].start = 96;
 ++			laguna_keys[0].gpio = 100;
+++			gsc_i2cinfo.irq = 96;
+++			i2c_new_device(i2c_get_adapter(0), &gsc_i2cinfo);
 ++			// GPIO's
 + 			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2385));
 +-			// configure LED's
@@ -1801,7 +1853,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 			laguna_gpio_leds[0].gpio = 115;
 + 			laguna_gpio_leds[1].gpio = 12;
 + 			laguna_gpio_leds[1].name = "red";
-+@@ -1089,37 +1181,81 @@ static int __init laguna_model_setup(voi
++@@ -1089,40 +1175,94 @@ static int __init laguna_model_setup(voi
 + 			laguna_gpio_leds[3].name = "blue";
 + 			laguna_gpio_leds[3].active_low = 0,
 + 			laguna_gpio_leds_data.num_leds = 4;
@@ -1813,8 +1865,9 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 		} else if (strncmp(laguna_info.model, "GW2384", 6) == 0) {
 +-			// configure GPIO's
 ++			// GSC
-++			laguna_input_resources[0].start = 96;
 ++			laguna_keys[0].gpio = 100;
+++			gsc_i2cinfo.irq = 96;
+++			i2c_new_device(i2c_get_adapter(0), &gsc_i2cinfo);
 ++			// GPIO's
 + 			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2384));
 +-			// configure LED's
@@ -1828,8 +1881,9 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 		} else if (strncmp(laguna_info.model, "GW2383", 6) == 0) {
 +-			// configure GPIO's
 ++			// GSC
-++			laguna_input_resources[0].start = 97;
 ++			laguna_keys[0].gpio = 108;
+++			gsc_i2cinfo.irq = 97;
+++			i2c_new_device(i2c_get_adapter(0), &gsc_i2cinfo);
 ++			// GPIO's
 + 			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2383));
 +-			// configure LED's
@@ -1844,8 +1898,9 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 		} else if (strncmp(laguna_info.model, "GW2382", 6) == 0) {
 +-			// configure GPIO's
 ++			// GSC
-++			laguna_input_resources[0].start = 97;
 ++			laguna_keys[0].gpio = 108;
+++			gsc_i2cinfo.irq = 97;
+++			i2c_new_device(i2c_get_adapter(0), &gsc_i2cinfo);
 ++			// GPIO's
 + 			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2382));
 +-			// configure LED's
@@ -1860,8 +1915,9 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 		} else if (strncmp(laguna_info.model, "GW2380", 6) == 0) {
 +-			// configure GPIO's
 ++			// GSC
-++			laguna_input_resources[0].start = 97;
 ++			laguna_keys[0].gpio = 108;
+++			gsc_i2cinfo.irq = 97;
+++			i2c_new_device(i2c_get_adapter(0), &gsc_i2cinfo);
 ++			// GPIO's
 + 			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2380));
 +-			// configure LED's
@@ -1877,8 +1933,9 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 		} else if (strncmp(laguna_info.model, "GW2391", 6) == 0) {
 +-			// configure GPIO's
 ++			// GSC
-++			laguna_input_resources[0].start = 97;
 ++			laguna_keys[0].gpio = 100;
+++			gsc_i2cinfo.irq = 97;
+++			i2c_new_device(i2c_get_adapter(0), &gsc_i2cinfo);
 ++			// GPIO's
 + 			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2391));
 +-			// configure LED's
@@ -1894,3 +1951,22 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 + 	} else {
 + 		// Do some defaults here, not sure what yet
 + 	}
+++
+++	platform_device_register(&laguna_gsc_watchdog);
+++
+++	platform_device_register(&laguna_watchdog);
+++
++ 	return 0;
++ }
++ late_initcall(laguna_model_setup);
++--- a/drivers/watchdog/mpcore_wdt.c
+++++ b/drivers/watchdog/mpcore_wdt.c
++@@ -453,7 +453,7 @@ static void __exit mpcore_wdt_exit(void)
++ 	platform_driver_unregister(&mpcore_wdt_driver);
++ }
++ 
++-module_init(mpcore_wdt_init);
+++late_initcall(mpcore_wdt_init);
++ module_exit(mpcore_wdt_exit);
++ 
++ MODULE_AUTHOR("ARM Limited");
