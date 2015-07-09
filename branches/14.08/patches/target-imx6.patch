@@ -1484,7 +1484,7 @@ Index: trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.c
 ===================================================================
 --- trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.c	(revision 0)
 +++ trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.c	(working copy)
-@@ -0,0 +1,445 @@
+@@ -0,0 +1,459 @@
 +/*
 + * Copyright (C) 2014 Gateworks Corporation
 + *
@@ -1543,7 +1543,7 @@ Index: trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.c
 +static struct gsc *gsc_priv;
 +
 +/**
-+ * gsc_i2c_write - Writes a register to GSC
++ * gsc_i2c_write - Writes a register to GSC with retries
 + * @reg: register address
 + * @val: value to write
 + *
@@ -1551,10 +1551,17 @@ Index: trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.c
 + */
 +int __gsc_i2c_write(u8 reg, u8 val)
 +{
-+	int retry, ret = -EAGAIN;
++	int retry, ret;
 +
-+	for (retry = 0; ret == -EAGAIN && retry < I2C_RETRIES; retry++)
++	for (retry = 0; retry < I2C_RETRIES; retry++) {
 +		ret = i2c_smbus_write_byte_data(gsc_priv->client, reg, val);
++		/*
++		 * -EAGAIN returned when the i2c host controller is busy
++		 * -EIO returned when i2c device is busy
++		 */
++		if (ret != -EAGAIN && ret != -EIO)
++			break;
++	}
 +	if (ret < 0) {
 +		dev_err(&gsc_priv->client->dev, ">> 0x%02x %d\n", reg, ret);
 +		return ret;
@@ -1566,7 +1573,7 @@ Index: trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.c
 +}
 +
 +/**
-+ * gsc_i2c_read - Reads register from GSC
++ * gsc_i2c_read - Reads register from GSC with retries
 + * @reg: register address
 + * @val: value to write
 + *
@@ -1574,10 +1581,17 @@ Index: trunk/target/linux/imx6/files-3.14/drivers/mfd/gsc-core.c
 + */
 +static int __gsc_i2c_read(u8 reg, u8 *val)
 +{
-+	int retry, ret = -EAGAIN;
++	int retry, ret;
 +
-+	for (retry = 0; ret == -EAGAIN && retry < I2C_RETRIES; retry++)
++	for (retry = 0; retry < I2C_RETRIES; retry++) {
 +		ret = i2c_smbus_read_byte_data(gsc_priv->client, reg);
++		/*
++		 * -EAGAIN returned when the i2c host controller is busy
++		 * -EIO returned when i2c device is busy
++		 */
++		if (ret != -EAGAIN && ret != -EIO)
++			break;
++	}
 +	if (ret < 0) {
 +		dev_err(&gsc_priv->client->dev, "<< 0x%02x %d\n", reg, ret);
 +		return ret;
