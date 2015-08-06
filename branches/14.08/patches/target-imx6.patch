@@ -112,7 +112,7 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi
 ===================================================================
 --- trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi	(revision 0)
 +++ trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi	(working copy)
-@@ -0,0 +1,377 @@
+@@ -0,0 +1,376 @@
 +/*
 + * Copyright 2014 Gateworks Corporation
 + *
@@ -152,8 +152,7 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi
 +	};
 +
 +	gpio_keys {
-+		compatible = "gpio-keys-polled";
-+		poll-interval = <100>;
++		compatible = "gpio-keys";
 +		#address-cells = <1>;
 +		#size-cells = <0>;
 +
@@ -494,13 +493,12 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw552x.dtsi
 ===================================================================
 --- trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw552x.dtsi	(revision 42297)
 +++ trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw552x.dtsi	(working copy)
-@@ -46,6 +46,20 @@
+@@ -46,6 +46,19 @@
  		};
  	};
  
 +	gpio_keys {
-+		compatible = "gpio-keys-polled";
-+		poll-interval = <100>;
++		compatible = "gpio-keys";
 +		#address-cells = <1>;
 +		#size-cells = <0>;
 +
@@ -515,7 +513,7 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw552x.dtsi
  	memory {
  		reg = <0x10000000 0x20000000>;
  	};
-@@ -120,19 +134,45 @@
+@@ -120,19 +133,45 @@
  		pagesize = <16>;
  	};
  
@@ -3013,16 +3011,15 @@ Index: trunk/target/linux/imx6/patches-3.14/224-ventana-gpio-keys.patch
 ===================================================================
 --- trunk/target/linux/imx6/patches-3.14/224-ventana-gpio-keys.patch	(revision 0)
 +++ trunk/target/linux/imx6/patches-3.14/224-ventana-gpio-keys.patch	(working copy)
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,88 @@
 +--- a/arch/arm/boot/dts/imx6qdl-gw52xx.dtsi
 ++++ b/arch/arm/boot/dts/imx6qdl-gw52xx.dtsi
-+@@ -59,6 +59,20 @@
++@@ -59,6 +59,19 @@
 + 		};
 + 	};
 + 
 ++	gpio_keys {
-++		compatible = "gpio-keys-polled";
-++		poll-interval = <100>;
+++		compatible = "gpio-keys";
 ++		#address-cells = <1>;
 ++		#size-cells = <0>;
 ++
@@ -3039,13 +3036,12 @@ Index: trunk/target/linux/imx6/patches-3.14/224-ventana-gpio-keys.patch
 + 	};
 +--- a/arch/arm/boot/dts/imx6qdl-gw51xx.dtsi
 ++++ b/arch/arm/boot/dts/imx6qdl-gw51xx.dtsi
-+@@ -42,6 +42,20 @@
++@@ -42,6 +42,19 @@
 + 		};
 + 	};
 + 
 ++	gpio_keys {
-++		compatible = "gpio-keys-polled";
-++		poll-interval = <100>;
+++		compatible = "gpio-keys";
 ++		#address-cells = <1>;
 ++		#size-cells = <0>;
 ++
@@ -3062,13 +3058,12 @@ Index: trunk/target/linux/imx6/patches-3.14/224-ventana-gpio-keys.patch
 + 	};
 +--- a/arch/arm/boot/dts/imx6qdl-gw53xx.dtsi
 ++++ b/arch/arm/boot/dts/imx6qdl-gw53xx.dtsi
-+@@ -61,6 +61,20 @@
++@@ -61,6 +61,19 @@
 + 		};
 + 	};
 + 
 ++	gpio_keys {
-++		compatible = "gpio-keys-polled";
-++		poll-interval = <100>;
+++		compatible = "gpio-keys";
 ++		#address-cells = <1>;
 ++		#size-cells = <0>;
 ++
@@ -3085,13 +3080,12 @@ Index: trunk/target/linux/imx6/patches-3.14/224-ventana-gpio-keys.patch
 + 	};
 +--- a/arch/arm/boot/dts/imx6qdl-gw54xx.dtsi
 ++++ b/arch/arm/boot/dts/imx6qdl-gw54xx.dtsi
-+@@ -61,6 +61,20 @@
++@@ -61,6 +61,19 @@
 + 		};
 + 	};
 + 
 ++	gpio_keys {
-++		compatible = "gpio-keys-polled";
-++		poll-interval = <100>;
+++		compatible = "gpio-keys";
 ++		#address-cells = <1>;
 ++		#size-cells = <0>;
 ++
