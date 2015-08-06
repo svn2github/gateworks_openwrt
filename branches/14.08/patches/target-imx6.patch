@@ -590,7 +590,7 @@ Index: trunk/target/linux/imx6/files-3.14/drivers/input/misc/gsc-input.c
 ===================================================================
 --- trunk/target/linux/imx6/files-3.14/drivers/input/misc/gsc-input.c	(revision 0)
 +++ trunk/target/linux/imx6/files-3.14/drivers/input/misc/gsc-input.c	(working copy)
-@@ -0,0 +1,163 @@
+@@ -0,0 +1,180 @@
 +/*
 + * Copyright (C) 2014 Gateworks Corporation
 + *
@@ -676,6 +676,16 @@ Index: trunk/target/linux/imx6/files-3.14/drivers/input/misc/gsc-input.c
 +	struct input_dev *input;
 +	int err, i, irq;
 +	struct resource r;
++	static char *irq_names[] = {
++		"button",
++		"key-erased",
++		"eeprom-wp",
++		NULL,
++		NULL,
++		"tamper",
++		NULL,
++		"button-held"
++	};
 +	u8 reg;
 +
 +	if (gsc_i2c_read(GSC_CTRL_0, &reg)) {
@@ -702,9 +712,16 @@ Index: trunk/target/linux/imx6/files-3.14/drivers/input/misc/gsc-input.c
 +	platform_set_drvdata(pdev, input);
 +
 +	for (i = 0; i < 8; i++) {
-+		irq = of_irq_to_resource(pdev->dev.of_node, i, &r);
-+		if (!irq)
-+			break;
++		if (pdev->dev.of_node) {
++			irq = of_irq_to_resource(pdev->dev.of_node, i, &r);
++			if (!irq)
++				break;
++		} else {
++			if (!irq_names[i])
++				continue;
++			r.name = irq_names[i];
++			irq = 160 + i;
++		}
 +		err = devm_request_threaded_irq(&pdev->dev, irq, NULL,
 +						gsc_input_irq, 0, r.name,
 +						input);
