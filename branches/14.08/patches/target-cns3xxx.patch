@@ -162,6 +162,17 @@ Index: trunk/target/linux/cns3xxx/files/arch/arm/mach-cns3xxx/laguna.c
  
  	cns3xxx_pwr_clk_en(1 << PM_CLK_GATE_REG_OFFSET_SPI_PCM_I2C);
  	cns3xxx_pwr_power_up(1 << PM_CLK_GATE_REG_OFFSET_SPI_PCM_I2C);
+@@ -1050,7 +1049,9 @@
+ 			laguna_gpio_leds[0].gpio = 107;
+ 			laguna_gpio_leds[1].gpio = 106;
+ 			laguna_gpio_leds_data.num_leds = 2;
+-		} else if (strncmp(laguna_info.model, "GW2391", 6) == 0) {
++		} else if ( (strncmp(laguna_info.model, "GW2391", 6) == 0)
++			 || (strncmp(laguna_info.model, "GW2393", 6) == 0) )
++		{
+ 			// configure GPIO's
+ 			laguna_register_gpio(ARRAY_AND_SIZE(laguna_gpio_gw2391));
+ 			// configure LED's
 Index: trunk/target/linux/cns3xxx/files/drivers/input/misc/gsc-input.c
 ===================================================================
 --- trunk/target/linux/cns3xxx/files/drivers/input/misc/gsc-input.c	(revision 0)
@@ -1526,7 +1537,7 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 ===================================================================
 --- trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.patch	(revision 0)
 +++ trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.patch	(working copy)
-@@ -0,0 +1,460 @@
+@@ -0,0 +1,462 @@
 +--- a/arch/arm/mach-cns3xxx/laguna.c
 ++++ b/arch/arm/mach-cns3xxx/laguna.c
 +@@ -20,9 +20,11 @@
@@ -1947,7 +1958,9 @@ Index: trunk/target/linux/cns3xxx/patches-3.10/423-ventana-enable-gsc-drivers.pa
 ++			platform_device_register(&laguna_gpio_leds_device);
 ++			platform_device_register(&laguna_gsc_input);
 ++			platform_device_register(&laguna_keys_device);
-+ 		} else if (strncmp(laguna_info.model, "GW2391", 6) == 0) {
++ 		} else if ( (strncmp(laguna_info.model, "GW2391", 6) == 0)
++ 			 || (strncmp(laguna_info.model, "GW2393", 6) == 0) )
++ 		{
 +-			// configure GPIO's
 ++			// GSC
 ++			laguna_keys[0].gpio = 100;
