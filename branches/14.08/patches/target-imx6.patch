@@ -39,7 +39,17 @@ Index: trunk/target/linux/imx6/config-3.14
  # CONFIG_CACHE_L2X0 is not set
  CONFIG_CC_OPTIMIZE_FOR_SIZE=y
  CONFIG_CLKDEV_LOOKUP=y
-@@ -311,6 +312,7 @@
+@@ -291,6 +292,9 @@
+ # CONFIG_PREEMPT_RCU is not set
+ CONFIG_PROC_DEVICETREE=y
+ CONFIG_PTP_1588_CLOCK=y
++CONFIG_PWM=y
++CONFIG_PWM_IMX=y
++CONFIG_PWM_SYSFS=y
+ CONFIG_RATIONAL=y
+ CONFIG_RCU_STALL_COMMON=y
+ CONFIG_RD_BZIP2=y
+@@ -311,6 +315,7 @@
  CONFIG_RFS_ACCEL=y
  CONFIG_RPS=y
  CONFIG_RTC_CLASS=y
@@ -47,7 +57,7 @@ Index: trunk/target/linux/imx6/config-3.14
  # CONFIG_RTC_DRV_IMXDI is not set
  # CONFIG_RTC_DRV_MXC is not set
  CONFIG_SATA_AHCI_PLATFORM=y
-@@ -346,8 +348,24 @@
+@@ -346,8 +351,24 @@
  CONFIG_UBIFS_FS_ZLIB=y
  CONFIG_UID16=y
  CONFIG_UNCOMPRESS_INCLUDE="debug/uncompress.h"
@@ -73,7 +83,7 @@ Index: trunk/target/linux/imx6/config-3.14
  CONFIG_USE_OF=y
  CONFIG_VECTORS_BASE=0xffff0000
  CONFIG_VFP=y
-@@ -363,3 +381,10 @@
+@@ -363,3 +384,10 @@
  CONFIG_ZLIB_DEFLATE=y
  CONFIG_ZLIB_INFLATE=y
  CONFIG_ZONE_DMA_FLAG=0
@@ -112,7 +122,7 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi
 ===================================================================
 --- trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi	(revision 0)
 +++ trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi	(working copy)
-@@ -0,0 +1,376 @@
+@@ -0,0 +1,400 @@
 +/*
 + * Copyright 2014 Gateworks Corporation
 + *
@@ -437,6 +447,18 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi
 +			>;
 +		};
 +
++		pinctrl_pwm2: pwm2grp {
++			fsl,pins = <
++				MX6QDL_PAD_SD1_DAT2__PWM2_OUT		0x1b0b1
++			>;
++		};
++
++		pinctrl_pwm3: pwm3grp {
++			fsl,pins = <
++				MX6QDL_PAD_SD1_DAT1__PWM3_OUT		0x1b0b1
++			>;
++		};
++
 +		pinctrl_uart2: uart2grp {
 +			fsl,pins = <
 +				MX6QDL_PAD_SD4_DAT7__UART2_TX_DATA	0x1b0b1
@@ -464,6 +486,18 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw551x.dtsi
 +	pinctrl-0 = <&pinctrl_pcie>;
 +	reset-gpio = <&gpio1 0 0>;
 +	status = "okay";
++};
++
++&pwm2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_pwm2>; /* MX6_DIO1 */
++	status = "disabled";
++};
++
++&pwm3 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_pwm3>; /* MX6_DIO2 */
++	status = "disabled";
 +};
 +
 +&uart2 {
@@ -562,6 +596,44 @@ Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6qdl-gw552x.dtsi
  		compatible = "dallas,ds1672";
  		reg = <0x68>;
  	};
+@@ -262,6 +301,18 @@
+ 			>;
+ 		};
+ 
++		pinctrl_pwm2: pwm2grp {
++			fsl,pins = <
++				MX6QDL_PAD_SD1_DAT2__PWM2_OUT		0x1b0b1
++			>;
++		};
++
++		pinctrl_pwm3: pwm3grp {
++			fsl,pins = <
++				MX6QDL_PAD_SD1_DAT1__PWM3_OUT		0x1b0b1
++			>;
++		};
++
+ 		pinctrl_uart2: uart2grp {
+ 			fsl,pins = <
+ 				MX6QDL_PAD_SD4_DAT7__UART2_TX_DATA	0x1b0b1
+@@ -290,6 +341,18 @@
+ 	status = "okay";
+ };
+ 
++&pwm2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_pwm2>; /* MX6_DIO1 */
++	status = "disabled";
++};
++
++&pwm3 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_pwm3>; /* MX6_DIO2 */
++	status = "disabled";
++};
++
+ &uart2 {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_uart2>;
 Index: trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6q-gw551x.dts
 ===================================================================
 --- trunk/target/linux/imx6/files-3.14/arch/arm/boot/dts/imx6q-gw551x.dts	(revision 0)
@@ -3186,6 +3258,197 @@ Index: trunk/target/linux/imx6/patches-3.14/310-fix-uSD-on-new-rev-boards.patch
 + 				MX6QDL_PAD_SD4_CMD__NAND_RE_B		0xb0b1
 + 				MX6QDL_PAD_SD4_CLK__NAND_WE_B		0xb0b1
 + 				MX6QDL_PAD_NANDF_D0__NAND_DATA00	0xb0b1
+Index: trunk/target/linux/imx6/patches-3.14/410-ventana-add-pwm.patch
+===================================================================
+--- trunk/target/linux/imx6/patches-3.14/410-ventana-add-pwm.patch	(revision 0)
++++ trunk/target/linux/imx6/patches-3.14/410-ventana-add-pwm.patch	(working copy)
+@@ -0,0 +1,186 @@
++--- a/arch/arm/boot/dts/imx6qdl-gw51xx.dtsi
+++++ b/arch/arm/boot/dts/imx6qdl-gw51xx.dtsi
++@@ -340,6 +340,24 @@
++ 			>;
++ 		};
++ 
+++		pinctrl_pwm2: pwm2grp {
+++			fsl,pins = <
+++				MX6QDL_PAD_SD1_DAT2__PWM2_OUT		0x1b0b1
+++			>;
+++		};
+++
+++		pinctrl_pwm3: pwm3grp {
+++			fsl,pins = <
+++				MX6QDL_PAD_SD1_DAT1__PWM3_OUT		0x1b0b1
+++			>;
+++		};
+++
+++		pinctrl_pwm4: pwm4grp {
+++			fsl,pins = <
+++				MX6QDL_PAD_SD1_CMD__PWM4_OUT		0x1b0b1
+++			>;
+++		};
+++
++ 		pinctrl_uart1: uart1grp {
++ 			fsl,pins = <
++ 				MX6QDL_PAD_SD3_DAT7__UART1_TX_DATA	0x1b0b1
++@@ -381,6 +399,24 @@
++ 	status = "okay";
++ };
++ 
+++&pwm2 {
+++	pinctrl-names = "default";
+++	pinctrl-0 = <&pinctrl_pwm2>; /* MX6_DIO1 */
+++	status = "disabled";
+++};
+++
+++&pwm3 {
+++	pinctrl-names = "default";
+++	pinctrl-0 = <&pinctrl_pwm3>; /* MX6_DIO2 */
+++	status = "disabled";
+++};
+++
+++&pwm4 {
+++	pinctrl-names = "default";
+++	pinctrl-0 = <&pinctrl_pwm4>; /* MX6_DIO3 */
+++	status = "disabled";
+++};
+++
++ &uart1 {
++ 	pinctrl-names = "default";
++ 	pinctrl-0 = <&pinctrl_uart1>;
++--- a/arch/arm/boot/dts/imx6qdl-gw52xx.dtsi
+++++ b/arch/arm/boot/dts/imx6qdl-gw52xx.dtsi
++@@ -460,6 +460,19 @@
++ 			>;
++ 		};
++ 
+++
+++		pinctrl_pwm2: pwm2grp {
+++			fsl,pins = <
+++				MX6QDL_PAD_SD1_DAT2__PWM2_OUT		0x1b0b1
+++			>;
+++		};
+++
+++		pinctrl_pwm3: pwm3grp {
+++			fsl,pins = <
+++				MX6QDL_PAD_SD1_DAT1__PWM3_OUT		0x1b0b1
+++			>;
+++		};
+++
++ 		pinctrl_pwm4: pwm4grp {
++ 			fsl,pins = <
++ 				MX6QDL_PAD_SD1_CMD__PWM4_OUT		0x1b0b1
++@@ -536,6 +549,19 @@
++ 	status = "okay";
++ };
++ 
+++
+++&pwm2 {
+++	pinctrl-names = "default";
+++	pinctrl-0 = <&pinctrl_pwm2>; /* MX6_DIO1 */
+++	status = "disabled";
+++};
+++
+++&pwm3 {
+++	pinctrl-names = "default";
+++	pinctrl-0 = <&pinctrl_pwm3>; /* MX6_DIO2 */
+++	status = "disabled";
+++};
+++
++ &pwm4 {
++ 	pinctrl-names = "default";
++ 	pinctrl-0 = <&pinctrl_pwm4>;
++--- a/arch/arm/boot/dts/imx6qdl-gw53xx.dtsi
+++++ b/arch/arm/boot/dts/imx6qdl-gw53xx.dtsi
++@@ -498,6 +498,18 @@
++ 			>;
++ 		};
++ 
+++		pinctrl_pwm2: pwm2grp {
+++			fsl,pins = <
+++				MX6QDL_PAD_SD1_DAT2__PWM2_OUT		0x1b0b1
+++			>;
+++		};
+++
+++		pinctrl_pwm3: pwm3grp {
+++			fsl,pins = <
+++				MX6QDL_PAD_SD1_DAT1__PWM3_OUT		0x1b0b1
+++			>;
+++		};
+++
++ 		pinctrl_pwm4: pwm4grp {
++ 			fsl,pins = <
++ 				MX6QDL_PAD_SD1_CMD__PWM4_OUT		0x1b0b1
++@@ -567,6 +579,18 @@
++ 	};
++ };
++ 
+++&pwm2 {
+++	pinctrl-names = "default";
+++	pinctrl-0 = <&pinctrl_pwm2>; /* MX6_DIO1 */
+++	status = "disabled";
+++};
+++
+++&pwm3 {
+++	pinctrl-names = "default";
+++	pinctrl-0 = <&pinctrl_pwm3>; /* MX6_DIO2 */
+++	status = "disabled";
+++};
+++
++ &pwm4 {
++ 	pinctrl-names = "default";
++ 	pinctrl-0 = <&pinctrl_pwm4>;
++--- a/arch/arm/boot/dts/imx6qdl-gw54xx.dtsi
+++++ b/arch/arm/boot/dts/imx6qdl-gw54xx.dtsi
++@@ -507,6 +507,24 @@
++ 			>;
++ 		};
++ 
+++		pinctrl_pwm1: pwm1grp {
+++			fsl,pins = <
+++				MX6QDL_PAD_GPIO_9__PWM1_OUT		0x1b0b1
+++			>;
+++		};
+++
+++		pinctrl_pwm2: pwm2grp {
+++			fsl,pins = <
+++				MX6QDL_PAD_SD1_DAT2__PWM2_OUT		0x1b0b1
+++			>;
+++		};
+++
+++		pinctrl_pwm3: pwm3grp {
+++			fsl,pins = <
+++				MX6QDL_PAD_SD4_DAT1__PWM3_OUT		0x1b0b1
+++			>;
+++		};
+++
++ 		pinctrl_pwm4: pwm4grp {
++ 			fsl,pins = <
++ 				MX6QDL_PAD_SD1_CMD__PWM4_OUT		0x1b0b1
++@@ -587,6 +605,24 @@
++ 	};
++ };
++ 
+++&pwm1 {
+++	pinctrl-names = "default";
+++	pinctrl-0 = <&pinctrl_pwm1>; /* MX6_DIO0 */
+++	status = "disabled";
+++};
+++
+++&pwm2 {
+++	pinctrl-names = "default";
+++	pinctrl-0 = <&pinctrl_pwm2>; /* MX6_DIO1 */
+++	status = "disabled";
+++};
+++
+++&pwm3 {
+++	pinctrl-names = "default";
+++	pinctrl-0 = <&pinctrl_pwm3>; /* MX6_DIO2 */
+++	status = "disabled";
+++};
+++
++ &pwm4 {
++ 	pinctrl-names = "default";
++ 	pinctrl-0 = <&pinctrl_pwm4>;
 Index: trunk/target/linux/imx6/profiles/120-gateworks.mk
 ===================================================================
 --- trunk/target/linux/imx6/profiles/120-gateworks.mk	(revision 42297)
