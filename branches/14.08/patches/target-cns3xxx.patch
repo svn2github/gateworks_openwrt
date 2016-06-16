@@ -968,6 +968,21 @@ Index: trunk/target/linux/cns3xxx/files/drivers/mfd/gsc-irq.c
 +	irq_free_descs(gsc_agent->irq_base, nr_irqs);
 +	return 0;
 +}
+Index: trunk/target/linux/cns3xxx/files/drivers/net/ethernet/cavium/cns3xxx_eth.c
+===================================================================
+--- trunk/target/linux/cns3xxx/files/drivers/net/ethernet/cavium/cns3xxx_eth.c	(revision 42297)
++++ trunk/target/linux/cns3xxx/files/drivers/net/ethernet/cavium/cns3xxx_eth.c	(working copy)
+@@ -718,8 +718,8 @@
+ 		napi_complete(napi);
+ 		enable_irq(sw->rx_irq);
+ 
+-		/* if rx descriptors are full schedule another poll */
+-		if (rx_ring->desc[(i-1) & (RX_DESCS-1)].cown)
++		/* If 1 or more frames came in during IRQ enable, re-schedule */
++		if (rx_ring->desc[i].cown)
+ 			eth_schedule_poll(sw);
+ 	}
+ 
 Index: trunk/target/linux/cns3xxx/files/drivers/watchdog/gsc_wdt.c
 ===================================================================
 --- trunk/target/linux/cns3xxx/files/drivers/watchdog/gsc_wdt.c	(revision 0)
